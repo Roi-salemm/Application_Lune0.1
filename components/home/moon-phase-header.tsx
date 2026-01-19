@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     height: 160,
     width: 160,
     borderRadius: 80,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#d3b658ff',
   },
   percentage: {
     opacity: 0.7,

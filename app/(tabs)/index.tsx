@@ -1,7 +1,6 @@
 import { ScrollView, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { BottomMenu } from '@/components/bottom-menu';
 import { ArticleCard } from '@/components/home/article-card';
 import { MoonPhaseHeader } from '@/components/home/moon-phase-header';
 import { ThemedView } from '@/components/themed-view';
@@ -12,7 +11,7 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <MoonPhaseHeader />
+        <MoonPhaseHeader phaseLabel="phraseLabel1" />
         <ThemedView style={styles.cardSection}>
           <ArticleCard
             title="Découvrir la lune"
@@ -21,7 +20,6 @@ export default function HomeScreen() {
           />
         </ThemedView>
       </ScrollView>
-      <BottomMenu />
     </ThemedView>
   );
 }
