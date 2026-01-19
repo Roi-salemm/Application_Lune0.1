@@ -58,6 +58,9 @@ export default function CalendarScreen() {
     setSelectedDate(new Date(year, monthIndex, 1));
     setPanelOpen(false);
     scrollToMonth(year, monthIndex);
+    requestAnimationFrame(() => {
+      scrollToMonth(year, monthIndex);
+    });
   }, [params.month, params.year, scrollToMonth]);
 
   // Drag gesture to dismiss the detail panel.
@@ -177,6 +180,7 @@ export default function CalendarScreen() {
           selectedDate={selectedDate}
           notes={notes}
           onSelectDate={handleSelectDate}
+          visibleMonthIndex={visibleMonthIndex}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           onScrollToIndexFailed={handleScrollToIndexFailed}

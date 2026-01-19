@@ -13,6 +13,7 @@ type MonthListProps = {
   selectedDate: Date | null;
   notes: Record<string, NoteItem[]>;
   onSelectDate: (date: Date) => void;
+  visibleMonthIndex: number;
   onViewableItemsChanged: (info: { viewableItems: Array<{ index: number | null }> }) => void;
   viewabilityConfig: { viewAreaCoveragePercentThreshold: number };
   onScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
@@ -25,6 +26,7 @@ export function MonthList({
   selectedDate,
   notes,
   onSelectDate,
+  visibleMonthIndex,
   onViewableItemsChanged,
   viewabilityConfig,
   onScrollToIndexFailed,
@@ -73,7 +75,10 @@ export function MonthList({
     );
   };
 
-  const renderMonth = (year: number, month: number) => {
+  const renderMonth = (year: number, month: number, index: number) => {
+    if (Math.abs(index - visibleMonthIndex) > 1) {
+      return <View style={[styles.monthSpacer, { height: monthLayouts.heights[index] }]} />;
+    }
     const daysInMonth = getDaysInMonth(year, month);
     const startOffset = getStartOffset(year, month);
     const totalCells = startOffset + daysInMonth;
@@ -103,7 +108,7 @@ export function MonthList({
       ref={listRef}
       data={months}
       keyExtractor={(item) => `${item.year}-${item.month}`}
-      renderItem={({ item }) => renderMonth(item.year, item.month)}
+      renderItem={({ item, index }) => renderMonth(item.year, item.month, index)}
       getItemLayout={getItemLayout}
       onLayout={onListLayout}
       contentContainerStyle={styles.scrollContent}
@@ -127,6 +132,9 @@ const styles = StyleSheet.create({
   },
   monthSection: {
     gap: 10,
+    marginBottom: 20,
+  },
+  monthSpacer: {
     marginBottom: 20,
   },
   daysGrid: {

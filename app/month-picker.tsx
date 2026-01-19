@@ -1,9 +1,9 @@
 // Month picker screen to jump to a specific month/year.
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BlurView } from 'expo-blur';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { MONTHS } from '@/constants/calendar';
 import { getDaysInMonth, getStartOffset } from '@/lib/calendar-utils';
@@ -14,7 +14,7 @@ type MonthCardProps = {
   onPick: (year: number, monthIndex: number) => void;
 };
 
-function MonthCard({ year, monthIndex, onPick }: MonthCardProps) {
+const MonthCard = memo(function MonthCard({ year, monthIndex, onPick }: MonthCardProps) {
   const { days, leadingEmpty, trailingEmpty } = useMemo(() => {
     const count = getDaysInMonth(year, monthIndex);
     const startOffset = getStartOffset(year, monthIndex);
@@ -45,13 +45,20 @@ function MonthCard({ year, monthIndex, onPick }: MonthCardProps) {
       </View>
     </Pressable>
   );
-}
+});
 
 export default function MonthPickerScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ year?: string; month?: string }>();
   const today = useMemo(() => new Date(), []);
   const scale = useRef(new Animated.Value(0.96)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const listRef = useRef<SectionList<number>>(null);
+  const userScrollRef = useRef(false);
+  const [yearRange, setYearRange] = useState(() => {
+    const current = today.getFullYear();
+    return { start: current, end: current };
+  });
 
   const years = useMemo(() => {
     const currentYear = today.getFullYear();
@@ -60,15 +67,19 @@ export default function MonthPickerScreen() {
     return Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
   }, [today]);
 
-  const sections = useMemo(
-    () =>
-      years.map((year) => ({
+  const sections = useMemo(() => {
+    const minYear = years[0];
+    const maxYear = years[years.length - 1];
+    const startYear = Math.max(minYear, yearRange.start);
+    const endYear = Math.min(maxYear, yearRange.end);
+    return years
+      .filter((year) => year >= startYear && year <= endYear)
+      .map((year) => ({
         title: String(year),
         year,
         data: [year],
-      })),
-    [years],
-  );
+      }));
+  }, [yearRange, years]);
 
   useEffect(() => {
     Animated.parallel([
@@ -77,12 +88,74 @@ export default function MonthPickerScreen() {
     ]).start();
   }, [opacity, scale]);
 
-  const handlePick = (year: number, monthIndex: number) => {
+  const handlePick = useCallback((year: number, monthIndex: number) => {
     router.replace({
       pathname: '/(tabs)/calendar',
       params: { year: String(year), month: String(monthIndex + 1) },
     });
-  };
+  }, [router]);
+
+  useEffect(() => {
+    if (!params.year) {
+      return;
+    }
+    const targetYear = Number(params.year);
+    if (!Number.isFinite(targetYear)) {
+      return;
+    }
+    setYearRange((range) => ({
+      start: Math.min(range.start, targetYear),
+      end: Math.max(range.end, targetYear),
+    }));
+  }, [params.year]);
+
+  useEffect(() => {
+    if (!params.year) {
+      return;
+    }
+    const targetYear = Number(params.year);
+    if (!Number.isFinite(targetYear)) {
+      return;
+    }
+    const sectionIndex = sections.findIndex((section) => section.year === targetYear);
+    if (sectionIndex === -1) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        viewPosition: 0,
+        animated: false,
+      });
+    });
+  }, [params.year, sections]);
+
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: { title: string } }) => (
+      <View style={styles.yearHeader}>
+        <View style={styles.yearPill}>
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
+          <Text style={styles.yearLabel}>{section.title}</Text>
+        </View>
+      </View>
+    ),
+    [],
+  );
+
+  const renderYear = useCallback(
+    ({ item: year }: { item: number }) => (
+      <View style={styles.yearBlock}>
+        <View style={styles.monthGrid}>
+          {MONTHS.map((_, index) => (
+            <MonthCard key={`${year}-${index}`} year={year} monthIndex={index} onPick={handlePick} />
+          ))}
+        </View>
+      </View>
+    ),
+    [handlePick],
+  );
 
   return (
     <View style={styles.container}>
@@ -105,28 +178,54 @@ export default function MonthPickerScreen() {
           </View>
         </View>
         <SectionList
+          ref={listRef}
           sections={sections}
           keyExtractor={(item) => String(item)}
           stickySectionHeadersEnabled
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.yearList}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.yearHeader}>
-              <View style={styles.yearPill}>
-                <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
-                <Text style={styles.yearLabel}>{section.title}</Text>
-              </View>
-            </View>
-          )}
-          renderItem={({ item: year }) => (
-            <View style={styles.yearBlock}>
-              <View style={styles.monthGrid}>
-                {MONTHS.map((_, index) => (
-                  <MonthCard key={`${year}-${index}`} year={year} monthIndex={index} onPick={handlePick} />
-                ))}
-              </View>
-            </View>
-          )}
+          initialNumToRender={2}
+          windowSize={5}
+          maxToRenderPerBatch={2}
+          removeClippedSubviews
+          updateCellsBatchingPeriod={16}
+          renderSectionHeader={renderSectionHeader}
+          renderItem={renderYear}
+          onViewableItemsChanged={() => {
+            if (!userScrollRef.current) {
+              return;
+            }
+          }}
+          onEndReachedThreshold={0.6}
+          onEndReached={() => {
+            if (!userScrollRef.current) {
+              return;
+            }
+            const maxYear = years[years.length - 1];
+            setYearRange((range) => ({
+              start: range.start,
+              end: Math.min(maxYear, range.end + 1),
+            }));
+          }}
+          onScroll={(event) => {
+            if (!userScrollRef.current) {
+              return;
+            }
+            const offsetY = event.nativeEvent.contentOffset.y;
+            if (offsetY < 60) {
+              const minYear = years[0];
+              setYearRange((range) => ({
+                start: Math.max(minYear, range.start - 1),
+                end: range.end,
+              }));
+            }
+          }}
+          onScrollBeginDrag={() => {
+            userScrollRef.current = true;
+          }}
+          onMomentumScrollBegin={() => {
+            userScrollRef.current = true;
+          }}
         />
       </Animated.View>
     </View>
