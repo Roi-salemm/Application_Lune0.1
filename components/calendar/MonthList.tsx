@@ -1,22 +1,22 @@
 // Month list view using FlatList to render month grids.
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
 import { DayCell } from '@/components/calendar/DayCell';
-import { MONTHS, WEEKDAYS } from '@/constants/calendar';
+import { CALENDAR_LAYOUT } from '@/constants/calendar';
 import { formatKey, getDaysInMonth, getStartOffset, isSameDay } from '@/lib/calendar-utils';
 import { NoteItem } from '@/types/calendar';
 
 type MonthListProps = {
   months: Array<{ year: number; month: number }>;
-  listRef: React.RefObject<FlatList<{ year: number; month: number }>>;
+  listRef: React.RefObject<FlatList<{ year: number; month: number }>> | React.MutableRefObject<FlatList<{ year: number; month: number }> | null>;
   selectedDate: Date | null;
   notes: Record<string, NoteItem[]>;
   onSelectDate: (date: Date) => void;
   onViewableItemsChanged: (info: { viewableItems: Array<{ index: number | null }> }) => void;
   viewabilityConfig: { viewAreaCoveragePercentThreshold: number };
   onScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
+  onListLayout?: (event: { nativeEvent: { layout: { height: number } } }) => void;
 };
 
 export function MonthList({
@@ -28,7 +28,35 @@ export function MonthList({
   onViewableItemsChanged,
   viewabilityConfig,
   onScrollToIndexFailed,
+  onListLayout,
 }: MonthListProps) {
+  const { cellHeight, rowGap, monthSpacing } = CALENDAR_LAYOUT;
+
+  const monthLayouts = useMemo(() => {
+    const heights = months.map(({ year, month }) => {
+      const daysInMonth = getDaysInMonth(year, month);
+      const startOffset = getStartOffset(year, month);
+      const rows = Math.ceil((startOffset + daysInMonth) / 7);
+      return rows * cellHeight + (rows - 1) * rowGap + monthSpacing;
+    });
+    const offsets: number[] = [];
+    let acc = 0;
+    heights.forEach((height) => {
+      offsets.push(acc);
+      acc += height;
+    });
+    return { heights, offsets };
+  }, [months, cellHeight, rowGap, monthSpacing]);
+
+  const getItemLayout = useCallback(
+    (_: ArrayLike<{ year: number; month: number }> | null, index: number) => ({
+      length: monthLayouts.heights[index],
+      offset: monthLayouts.offsets[index],
+      index,
+    }),
+    [monthLayouts],
+  );
+
   const renderDayCell = (date: Date | null, monthKey: string, index: number) => {
     const isSelected = date && selectedDate ? isSameDay(date, selectedDate) : false;
     const dateKey = date ? formatKey(date) : '';
@@ -39,7 +67,8 @@ export function MonthList({
         date={date}
         isSelected={isSelected}
         noteColor={noteColor}
-        onPress={date ? () => onSelectDate(date) : undefined}
+        hidden={!date}
+        onSelectDate={onSelectDate}
       />
     );
   };
@@ -47,8 +76,14 @@ export function MonthList({
   const renderMonth = (year: number, month: number) => {
     const daysInMonth = getDaysInMonth(year, month);
     const startOffset = getStartOffset(year, month);
-    const cells = Array.from({ length: startOffset + daysInMonth }, (_, index) => {
+    const totalCells = startOffset + daysInMonth;
+    const remainder = totalCells % 7;
+    const trailingEmpty = remainder === 0 ? 0 : 7 - remainder;
+    const cells = Array.from({ length: totalCells + trailingEmpty }, (_, index) => {
       if (index < startOffset) {
+        return null;
+      }
+      if (index >= startOffset + daysInMonth) {
         return null;
       }
       return new Date(year, month, index - startOffset + 1);
@@ -56,16 +91,6 @@ export function MonthList({
 
     return (
       <View style={styles.monthSection}>
-        <ThemedText type="title" style={styles.monthTitle}>
-          {MONTHS[month]} {year}
-        </ThemedText>
-        <View style={styles.weekRow}>
-          {WEEKDAYS.map((day) => (
-            <ThemedText key={day} type="default" style={styles.weekday}>
-              {day}
-            </ThemedText>
-          ))}
-        </View>
         <View style={styles.daysGrid}>
           {cells.map((date, index) => renderDayCell(date, `${year}-${month}`, index))}
         </View>
@@ -79,6 +104,8 @@ export function MonthList({
       data={months}
       keyExtractor={(item) => `${item.year}-${item.month}`}
       renderItem={({ item }) => renderMonth(item.year, item.month)}
+      getItemLayout={getItemLayout}
+      onLayout={onListLayout}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       removeClippedSubviews
@@ -94,32 +121,18 @@ export function MonthList({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    padding: 24,
-    paddingBottom: 200,
-    gap: 28,
+    paddingHorizontal: 12,
+    paddingBottom: 140,
+    paddingTop: CALENDAR_LAYOUT.listPaddingTop,
   },
   monthSection: {
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    gap: 16,
-  },
-  monthTitle: {
-    fontSize: 22,
-  },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  weekday: {
-    width: '14.2857%',
-    textAlign: 'center',
-    opacity: 0.7,
+    gap: 10,
+    marginBottom: 20,
   },
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 8,
+    rowGap: 14,
   },
 });

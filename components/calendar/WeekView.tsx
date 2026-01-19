@@ -2,9 +2,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
 import { DayCell } from '@/components/calendar/DayCell';
-import { MONTHS, WEEKDAYS } from '@/constants/calendar';
 import { formatKey, getWeekStart, isSameDay } from '@/lib/calendar-utils';
 import { NoteItem } from '@/types/calendar';
 
@@ -25,16 +23,6 @@ export function WeekView({ baseDate, selectedDate, notes, onSelectDate }: WeekVi
 
   return (
     <View style={styles.weekSection}>
-      <ThemedText type="title" style={styles.monthTitle}>
-        {MONTHS[baseDate.getMonth()]} {baseDate.getFullYear()}
-      </ThemedText>
-      <View style={styles.weekRow}>
-        {WEEKDAYS.map((day) => (
-          <ThemedText key={day} type="default" style={styles.weekday}>
-            {day}
-          </ThemedText>
-        ))}
-      </View>
       <View style={styles.weekGrid}>
         {days.map((date, index) => {
           const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
@@ -57,20 +45,8 @@ export function WeekView({ baseDate, selectedDate, notes, onSelectDate }: WeekVi
 
 const styles = StyleSheet.create({
   weekSection: {
-    padding: 16,
-    gap: 12,
-  },
-  monthTitle: {
-    fontSize: 22,
-  },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  weekday: {
-    width: '14.2857%',
-    textAlign: 'center',
-    opacity: 0.7,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   weekGrid: {
     flexDirection: 'row',

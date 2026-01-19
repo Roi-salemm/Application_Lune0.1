@@ -19,3 +19,12 @@ export const WEEKDAY_LONG = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 
 
 // Note color palette shown in the note form.
 export const COLORS = ['#D3B658', '#87B8D8', '#8BD49C', '#E5A3A3', '#C9A3E5', '#F0C36D', '#B5B5B5'];
+
+// Layout constants to keep calendar scroll math in sync with UI.
+export const CALENDAR_LAYOUT = {
+  cellHeight: 122,
+  rowGap: 14,
+  monthSpacing: 20,
+  listPaddingTop: 12,
+  headerClearancePx: -5,
+};

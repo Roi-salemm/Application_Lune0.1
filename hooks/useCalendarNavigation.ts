@@ -2,10 +2,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlatList } from 'react-native';
 
+import { CALENDAR_LAYOUT } from '@/constants/calendar';
+import { getDaysInMonth, getStartOffset } from '@/lib/calendar-utils';
+
 export function useCalendarNavigation(today: Date) {
   const listRef = useRef<FlatList<{ year: number; month: number }>>(null);
   const didAutoScroll = useRef(false);
   const [showTodayButton, setShowTodayButton] = useState(false);
+  const [listHeight, setListHeight] = useState(0);
 
   const months = useMemo(() => {
     const currentYear = today.getFullYear();
@@ -25,6 +29,34 @@ export function useCalendarNavigation(today: Date) {
     return (currentYear - (currentYear - 1)) * 12 + today.getMonth();
   }, [today]);
 
+  const monthLayouts = useMemo(() => {
+    const { cellHeight, rowGap, monthSpacing } = CALENDAR_LAYOUT;
+    const heights = months.map(({ year, month }) => {
+      const daysInMonth = getDaysInMonth(year, month);
+      const startOffset = getStartOffset(year, month);
+      const rows = Math.ceil((startOffset + daysInMonth) / 7);
+      return rows * cellHeight + (rows - 1) * rowGap + monthSpacing;
+    });
+    const offsets: number[] = [];
+    let acc = 0;
+    heights.forEach((height) => {
+      offsets.push(acc);
+      acc += height;
+    });
+    return { heights, offsets };
+  }, [months]);
+
+  const computeTodayOffset = useCallback(() => {
+    const { cellHeight, rowGap, listPaddingTop, headerClearancePx } = CALENDAR_LAYOUT;
+    const startOffset = getStartOffset(today.getFullYear(), today.getMonth());
+    const dayIndex = startOffset + (today.getDate() - 1);
+    const weekIndex = Math.floor(dayIndex / 7);
+    const monthOffset = monthLayouts.offsets[todayMonthIndex] ?? 0;
+    const weekOffset = weekIndex * (cellHeight + rowGap);
+    const target = monthOffset + listPaddingTop + weekOffset + headerClearancePx;
+    return Math.max(0, target);
+  }, [listHeight, monthLayouts.offsets, today, todayMonthIndex]);
+
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
@@ -38,25 +70,35 @@ export function useCalendarNavigation(today: Date) {
       const offset = info.averageItemLength * info.index;
       listRef.current?.scrollToOffset({ offset, animated: false });
       requestAnimationFrame(() => {
-        listRef.current?.scrollToIndex({ index: info.index, animated: true });
+        listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
       });
     },
     [],
   );
 
   useEffect(() => {
-    if (didAutoScroll.current) {
+    if (didAutoScroll.current || listHeight === 0) {
       return;
     }
     didAutoScroll.current = true;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToIndex({ index: todayMonthIndex, animated: false });
+      const offset = computeTodayOffset();
+      listRef.current?.scrollToOffset({ offset, animated: false });
     });
-  }, [todayMonthIndex]);
+  }, [computeTodayOffset, listHeight, todayMonthIndex]);
 
   const scrollToToday = useCallback(() => {
-    listRef.current?.scrollToIndex({ index: todayMonthIndex, animated: true });
-  }, [todayMonthIndex]);
+    if (listHeight === 0) {
+      listRef.current?.scrollToIndex({ index: todayMonthIndex, animated: true, viewPosition: 0.5 });
+      return;
+    }
+    const offset = computeTodayOffset();
+    listRef.current?.scrollToOffset({ offset, animated: true });
+  }, [computeTodayOffset, listHeight, todayMonthIndex]);
+
+  const onListLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+    setListHeight(event.nativeEvent.layout.height);
+  }, []);
 
   return {
     months,
@@ -66,5 +108,6 @@ export function useCalendarNavigation(today: Date) {
     viewabilityConfig,
     handleScrollToIndexFailed,
     scrollToToday,
+    onListLayout,
   };
 }
