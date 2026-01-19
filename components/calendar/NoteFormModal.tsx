@@ -1,5 +1,6 @@
 // Modal form to create a new note for a selected date.
-import React from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import React, { useMemo, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -7,13 +8,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { COLORS } from '@/constants/calendar';
-import { formatDisplay } from '@/lib/calendar-utils';
+import { COLORS, MONTHS, WEEKDAY_LONG } from '@/constants/calendar';
 
 type NoteFormModalProps = {
   visible: boolean;
@@ -21,6 +22,7 @@ type NoteFormModalProps = {
   formTitle: string;
   formBody: string;
   formColor: string;
+  onChangeDate: (value: Date) => void;
   onChangeTitle: (value: string) => void;
   onChangeBody: (value: string) => void;
   onChangeColor: (value: string) => void;
@@ -34,6 +36,7 @@ export function NoteFormModal({
   formTitle,
   formBody,
   formColor,
+  onChangeDate,
   onChangeTitle,
   onChangeBody,
   onChangeColor,
@@ -44,17 +47,57 @@ export function NoteFormModal({
     return null;
   }
 
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const effectiveDate = selectedDate ?? new Date();
+  const dateLabel = useMemo(() => {
+    const weekday = WEEKDAY_LONG[(effectiveDate.getDay() + 6) % 7];
+    return `${weekday} | ${effectiveDate.getDate()} | ${MONTHS[effectiveDate.getMonth()]} | ${effectiveDate.getFullYear()}`;
+  }, [effectiveDate]);
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.formOverlay}>
       <Pressable style={styles.formBackdrop} onPress={Keyboard.dismiss} />
       <View style={styles.formCard}>
+        <View style={styles.formHeader}>
+          <Pressable style={styles.headerButton} onPress={onClose}>
+            <ThemedText type="default" style={styles.headerButtonText}>
+              Annuler
+            </ThemedText>
+          </Pressable>
+          <ThemedText type="default" style={styles.formTitle}>
+            Nouvelle notte
+          </ThemedText>
+          <Pressable style={[styles.headerButton, styles.headerButtonPrimary]} onPress={onSave}>
+            <ThemedText type="default" style={styles.headerButtonText}>
+              Ajouter
+            </ThemedText>
+          </Pressable>
+        </View>
         <ScrollView
           contentContainerStyle={styles.formContent}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled">
-          <ThemedText type="title" style={styles.formTitle}>
-            Nouvelle notte
-          </ThemedText>
+          <Pressable style={styles.infoPill} onPress={() => setShowDatePicker(true)}>
+            <ThemedText type="default" style={styles.infoPillText}>
+              {dateLabel}
+            </ThemedText>
+          </Pressable>
+          {showDatePicker ? (
+            <DateTimePicker
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              value={effectiveDate}
+              textColor={Platform.OS === 'ios' ? '#E7E9EC' : undefined}
+              onChange={(_, date) => {
+                if (Platform.OS !== 'ios') {
+                  setShowDatePicker(false);
+                }
+                if (date) {
+                  onChangeDate(date);
+                }
+              }}
+            />
+          ) : null}
           <TextInput
             value={formTitle}
             onChangeText={onChangeTitle}
@@ -62,26 +105,23 @@ export function NoteFormModal({
             placeholderTextColor="#7A7A7A"
             style={styles.input}
           />
-          <View style={styles.dateRow}>
-            <ThemedText type="default" style={styles.dateLabel}>
-              Date:
-            </ThemedText>
-            <ThemedText type="default" style={styles.dateValue}>
-              {selectedDate ? formatDisplay(selectedDate) : ''}
-            </ThemedText>
-          </View>
           <View style={styles.colorRow}>
-            {COLORS.map((color) => (
-              <Pressable
-                key={color}
-                onPress={() => onChangeColor(color)}
-                style={[
-                  styles.colorDot,
-                  { backgroundColor: color },
-                  formColor === color && styles.colorDotSelected,
-                ]}
-              />
-            ))}
+            <ThemedText type="default" style={styles.rowLabel}>
+              Couleur
+            </ThemedText>
+            <View style={styles.colorSwatches}>
+              {COLORS.map((color) => (
+                <Pressable
+                  key={color}
+                  onPress={() => onChangeColor(color)}
+                  style={[
+                    styles.colorDot,
+                    { backgroundColor: color },
+                    formColor === color && styles.colorDotSelected,
+                  ]}
+                />
+              ))}
+            </View>
           </View>
           <TextInput
             value={formBody}
@@ -91,17 +131,25 @@ export function NoteFormModal({
             style={[styles.input, styles.textArea]}
             multiline
           />
-          <View style={styles.formActions}>
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <ThemedText type="default" style={styles.cancelButtonText}>
-                Annuler
-              </ThemedText>
-            </Pressable>
-            <Pressable style={styles.saveButton} onPress={onSave}>
-              <ThemedText type="default" style={styles.saveButtonText}>
-                Sauvegarder
-              </ThemedText>
-            </Pressable>
+          <View style={styles.switchRow}>
+            <ThemedText type="default" style={styles.switchLabel}>
+              Ajouter une alerte
+            </ThemedText>
+            <ThemedText type="default" style={styles.switchValue}>
+              Aucune
+            </ThemedText>
+          </View>
+          <View style={styles.switchRow}>
+            <ThemedText type="default" style={styles.switchLabel}>
+              Sauvegarde cloud
+            </ThemedText>
+            <Switch value={false} onValueChange={() => {}} thumbColor="#E7E9EC" trackColor={{ false: '#2B2B2B', true: '#2B2B2B' }} />
+          </View>
+          <View style={styles.switchRow}>
+            <ThemedText type="default" style={styles.switchLabel}>
+              Sauvegarde local
+            </ThemedText>
+            <Switch value={true} onValueChange={() => {}} thumbColor="#E7E9EC" trackColor={{ false: '#2B2B2B', true: '#D3B658' }} />
           </View>
         </ScrollView>
       </View>
@@ -124,76 +172,106 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   formCard: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#4A4A4A',
     borderRadius: 18,
-    padding: 20,
-    maxHeight: '85%',
+    padding: 18,
+    maxHeight: '88%',
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  headerButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  headerButtonPrimary: {
+    backgroundColor: '#5A5A5A',
+  },
+  headerButtonText: {
+    color: '#E7E9EC',
+    fontSize: 14,
   },
   formContent: {
     gap: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   formTitle: {
-    fontSize: 20,
+    fontSize: 16,
+    color: '#E7E9EC',
+  },
+  infoPill: {
+    borderRadius: 16,
+    backgroundColor: '#3E3E3E',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  infoPillText: {
+    color: '#C9CDD2',
+    fontSize: 12,
   },
   input: {
     borderRadius: 12,
-    backgroundColor: '#2C2C2C',
+    backgroundColor: '#3E3E3E',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     color: '#F5F5F5',
   },
   textArea: {
-    minHeight: 90,
+    minHeight: 140,
     textAlignVertical: 'top',
-  },
-  dateRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dateLabel: {
-    opacity: 0.7,
-  },
-  dateValue: {
-    opacity: 0.9,
   },
   colorRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#3E3E3E',
+    paddingVertical: 8,
+  },
+  rowLabel: {
+    color: '#C9CDD2',
+    fontSize: 13,
+  },
+  colorSwatches: {
+    flexDirection: 'row',
+    gap: 10,
   },
   colorDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   colorDotSelected: {
     borderColor: '#F5F5F5',
   },
-  formActions: {
+  switchRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
-  cancelButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#4A4A4A',
-    paddingVertical: 10,
-    alignItems: 'center',
+  switchLabel: {
+    color: '#C9CDD2',
+    fontSize: 13,
   },
-  cancelButtonText: {
-    color: '#B5B5B5',
-  },
-  saveButton: {
-    flex: 1,
-    borderRadius: 12,
-    backgroundColor: '#D3B658',
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#1E1E1E',
+  switchValue: {
+    color: '#C9CDD2',
+    fontSize: 13,
   },
 });

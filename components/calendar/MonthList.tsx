@@ -1,6 +1,6 @@
 // Month list view using FlatList to render month grids.
 import React, { useMemo, useCallback } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 import { DayCell } from '@/components/calendar/DayCell';
 import { CALENDAR_LAYOUT } from '@/constants/calendar';
@@ -18,6 +18,7 @@ type MonthListProps = {
   viewabilityConfig: { viewAreaCoveragePercentThreshold: number };
   onScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
   onListLayout?: (event: { nativeEvent: { layout: { height: number } } }) => void;
+  listStyle?: StyleProp<ViewStyle>;
 };
 
 export function MonthList({
@@ -31,6 +32,7 @@ export function MonthList({
   viewabilityConfig,
   onScrollToIndexFailed,
   onListLayout,
+  listStyle,
 }: MonthListProps) {
   const { cellHeight, rowGap, monthSpacing } = CALENDAR_LAYOUT;
 
@@ -111,6 +113,7 @@ export function MonthList({
       renderItem={({ item, index }) => renderMonth(item.year, item.month, index)}
       getItemLayout={getItemLayout}
       onLayout={onListLayout}
+      style={listStyle}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       removeClippedSubviews

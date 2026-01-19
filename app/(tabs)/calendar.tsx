@@ -1,8 +1,8 @@
 // Calendar screen composed of UI components and calendar hooks.
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Dimensions, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 
 import { DayDetailPanel } from '@/components/calendar/DayDetailPanel';
 import { MonthList } from '@/components/calendar/MonthList';
@@ -25,7 +25,9 @@ export default function CalendarScreen() {
   const [formTitle, setFormTitle] = useState('');
   const [formBody, setFormBody] = useState('');
   const [formColor, setFormColor] = useState(COLORS[0]);
+  const [formDate, setFormDate] = useState<Date>(today);
   const panelTranslateY = useRef(new Animated.Value(0)).current;
+  const panelHeightRef = useRef(Dimensions.get('window').height);
 
   const {
     months,
@@ -63,11 +65,23 @@ export default function CalendarScreen() {
     });
   }, [params.month, params.year, scrollToMonth]);
 
+  const closePanel = useCallback(() => {
+    Animated.timing(panelTranslateY, {
+      toValue: panelHeightRef.current,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      panelTranslateY.setValue(0);
+      setPanelOpen(false);
+    });
+  }, [panelTranslateY]);
+
   // Drag gesture to dismiss the detail panel.
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          panelOpen && gesture.dy > 6 && Math.abs(gesture.dx) < 10,
         onPanResponderMove: (_, gesture) => {
           if (gesture.dy > 0) {
             panelTranslateY.setValue(gesture.dy);
@@ -75,14 +89,7 @@ export default function CalendarScreen() {
         },
         onPanResponderRelease: (_, gesture) => {
           if (gesture.dy > 120 || gesture.vy > 1.2) {
-            Animated.timing(panelTranslateY, {
-              toValue: 400,
-              duration: 180,
-              useNativeDriver: true,
-            }).start(() => {
-              panelTranslateY.setValue(0);
-              setPanelOpen(false);
-            });
+            closePanel();
             return;
           }
           Animated.spring(panelTranslateY, {
@@ -91,8 +98,20 @@ export default function CalendarScreen() {
           }).start();
         },
       }),
-    [panelTranslateY],
+    [closePanel, panelOpen, panelTranslateY],
   );
+
+  useEffect(() => {
+    if (!panelOpen) {
+      return;
+    }
+    panelTranslateY.setValue(panelHeightRef.current);
+    Animated.timing(panelTranslateY, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [panelOpen, panelTranslateY]);
 
   // Update selection and toggle the detail panel.
   const handleSelectDate = (date: Date) => {
@@ -108,7 +127,7 @@ export default function CalendarScreen() {
   // Persist a new note to state and storage.
   const handleSaveNote = async () => {
     const saved = await saveNote({
-      date: selectedDate,
+      date: formDate,
       title: formTitle,
       body: formBody,
       color: formColor,
@@ -141,7 +160,12 @@ export default function CalendarScreen() {
           <Pressable style={styles.iconButton}>
             <MaterialIcons name="settings" size={20} color="#C7CBD1" />
           </Pressable>
-          <Pressable style={styles.addButton} onPress={() => setFormOpen(true)}>
+          <Pressable
+            style={styles.addButton}
+            onPress={() => {
+              setFormDate(selectedDate ?? today);
+              setFormOpen(true);
+            }}>
             <ThemedText type="default" style={styles.addButtonText}>
               +
             </ThemedText>
@@ -157,23 +181,8 @@ export default function CalendarScreen() {
         ))}
       </View>
 
-      {/* Main view: month list or split week/detail panel. */}
-      {panelOpen ? (
-        <View style={styles.splitContainer}>
-          <WeekView
-            baseDate={selectedDate ?? today}
-            selectedDate={selectedDate}
-            notes={notes}
-            onSelectDate={handleSelectDate}
-          />
-          <DayDetailPanel
-            selectedDate={selectedDate}
-            selectedNotes={selectedNotes}
-            panelTranslateY={panelTranslateY}
-            panHandlers={panResponder.panHandlers}
-          />
-        </View>
-      ) : (
+      {/* Main view: month list stays mounted to preserve scroll position. */}
+      <View style={styles.content}>
         <MonthList
           months={months}
           listRef={listRef}
@@ -185,8 +194,27 @@ export default function CalendarScreen() {
           viewabilityConfig={viewabilityConfig}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           onListLayout={onListLayout}
+          listStyle={panelOpen ? styles.listHidden : undefined}
         />
-      )}
+        {panelOpen ? (
+          <View style={styles.panelOverlay} pointerEvents="box-none">
+            <View style={styles.weekOverlay}>
+              <WeekView
+                baseDate={selectedDate ?? today}
+                selectedDate={selectedDate}
+                notes={notes}
+                onSelectDate={handleSelectDate}
+              />
+            </View>
+            <DayDetailPanel
+              selectedDate={selectedDate}
+              selectedNotes={selectedNotes}
+              panelTranslateY={panelTranslateY}
+              panHandlers={panResponder.panHandlers}
+            />
+          </View>
+        ) : null}
+      </View>
 
       {/* Floating "today" shortcut. */}
       {showTodayButton && !panelOpen ? (
@@ -200,10 +228,11 @@ export default function CalendarScreen() {
       {/* Note creation modal. */}
       <NoteFormModal
         visible={formOpen}
-        selectedDate={selectedDate}
+        selectedDate={formDate}
         formTitle={formTitle}
         formBody={formBody}
         formColor={formColor}
+        onChangeDate={setFormDate}
         onChangeTitle={setFormTitle}
         onChangeBody={setFormBody}
         onChangeColor={setFormColor}
@@ -294,5 +323,17 @@ const styles = StyleSheet.create({
   },
   splitContainer: {
     flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  panelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  weekOverlay: {
+    paddingTop: 6,
+  },
+  listHidden: {
+    opacity: 0,
   },
 });

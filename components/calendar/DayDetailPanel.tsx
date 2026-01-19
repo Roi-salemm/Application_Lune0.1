@@ -77,22 +77,27 @@ const styles = StyleSheet.create({
   },
   detailTitle: {
     fontSize: 20,
+    color: '#D7DADE',
   },
   phaseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    color: '#D7DADE',
   },
   phaseText: {
     opacity: 0.8,
+    color: '#D7DADE',
   },
   notesList: {
     gap: 12,
+    color: '#D7DADE',
   },
   noteRow: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
+    color: '#D7DADE',
   },
   noteDotLarge: {
     width: 12,
@@ -105,9 +110,11 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     fontSize: 16,
+    color: '#ffffffff',
   },
   noteBody: {
     opacity: 0.7,
+    color: '#D7DADE',
   },
   emptyNotes: {
     opacity: 0.6,
