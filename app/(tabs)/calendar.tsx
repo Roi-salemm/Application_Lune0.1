@@ -1,6 +1,7 @@
 // Calendar screen composed of UI components and calendar hooks.
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 
 import { DayDetailPanel } from '@/components/calendar/DayDetailPanel';
@@ -15,6 +16,8 @@ import { useCalendarNotes } from '@/hooks/useCalendarNotes';
 import { isSameDay } from '@/lib/calendar-utils';
 
 export default function CalendarScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ year?: string; month?: string }>();
   const today = useMemo(() => new Date(), []);
   const [selectedDate, setSelectedDate] = useState<Date | null>(today);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -23,8 +26,6 @@ export default function CalendarScreen() {
   const [formBody, setFormBody] = useState('');
   const [formColor, setFormColor] = useState(COLORS[0]);
   const panelTranslateY = useRef(new Animated.Value(0)).current;
-  const headerDate = selectedDate ?? today;
-  const headerLabel = `${MONTHS[headerDate.getMonth()]} ${headerDate.getFullYear()}`;
 
   const {
     months,
@@ -34,10 +35,30 @@ export default function CalendarScreen() {
     handleScrollToIndexFailed,
     scrollToToday,
     showTodayButton,
+    scrollToMonth,
+    visibleMonthIndex,
     onListLayout,
   } = useCalendarNavigation(today);
 
+  const visibleMonth = months[visibleMonthIndex] ?? { year: today.getFullYear(), month: today.getMonth() };
+  const headerLabel = `${MONTHS[visibleMonth.month]} ${visibleMonth.year}`;
+
   const { notes, selectedNotes, saveNote } = useCalendarNotes(selectedDate, today);
+
+  useEffect(() => {
+    if (!params.year || !params.month) {
+      return;
+    }
+    const year = Number(params.year);
+    const monthNumber = Number(params.month);
+    if (!Number.isFinite(year) || !Number.isFinite(monthNumber)) {
+      return;
+    }
+    const monthIndex = Math.min(11, Math.max(0, monthNumber - 1));
+    setSelectedDate(new Date(year, monthIndex, 1));
+    setPanelOpen(false);
+    scrollToMonth(year, monthIndex);
+  }, [params.month, params.year, scrollToMonth]);
 
   // Drag gesture to dismiss the detail panel.
   const panResponder = useMemo(
@@ -107,7 +128,7 @@ export default function CalendarScreen() {
   return (
     <ThemedView style={styles.container}>
       <View style={styles.header}>
-        <Pressable style={styles.monthButton}>
+        <Pressable style={styles.monthButton} onPress={() => router.push('/month-picker')}>
           <MaterialIcons name="chevron-left" size={20} color="#C7CBD1" />
           <ThemedText type="default" style={styles.monthButtonText}>
             {headerLabel}

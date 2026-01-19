@@ -10,6 +10,7 @@ export function useCalendarNavigation(today: Date) {
   const didAutoScroll = useRef(false);
   const [showTodayButton, setShowTodayButton] = useState(false);
   const [listHeight, setListHeight] = useState(0);
+  const [visibleMonthIndex, setVisibleMonthIndex] = useState(0);
 
   const months = useMemo(() => {
     const currentYear = today.getFullYear();
@@ -57,11 +58,41 @@ export function useCalendarNavigation(today: Date) {
     return Math.max(0, target);
   }, [listHeight, monthLayouts.offsets, today, todayMonthIndex]);
 
+  const getMonthIndex = useCallback(
+    (year: number, month: number) => {
+      const startYear = today.getFullYear() - 1;
+      return (year - startYear) * 12 + month;
+    },
+    [today],
+  );
+
+  const scrollToMonth = useCallback(
+    (year: number, month: number) => {
+      const { listPaddingTop, headerClearancePx } = CALENDAR_LAYOUT;
+      const index = getMonthIndex(year, month);
+      if (index < 0 || index >= months.length) {
+        return;
+      }
+      if (listHeight === 0) {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+        return;
+      }
+      const monthOffset = monthLayouts.offsets[index] ?? 0;
+      const target = monthOffset + listPaddingTop + headerClearancePx;
+      listRef.current?.scrollToOffset({ offset: Math.max(0, target), animated: true });
+    },
+    [getMonthIndex, listHeight, monthLayouts.offsets, months.length],
+  );
+
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
       const isVisible = viewableItems.some((item) => item.index === todayMonthIndex);
       setShowTodayButton(!isVisible);
+      const firstVisible = viewableItems.find((item) => item.index !== null);
+      if (firstVisible?.index != null) {
+        setVisibleMonthIndex(firstVisible.index);
+      }
     },
   ).current;
 
@@ -81,6 +112,7 @@ export function useCalendarNavigation(today: Date) {
       return;
     }
     didAutoScroll.current = true;
+    setVisibleMonthIndex(todayMonthIndex);
     requestAnimationFrame(() => {
       const offset = computeTodayOffset();
       listRef.current?.scrollToOffset({ offset, animated: false });
@@ -104,10 +136,12 @@ export function useCalendarNavigation(today: Date) {
     months,
     listRef,
     showTodayButton,
+    visibleMonthIndex,
     onViewableItemsChanged,
     viewabilityConfig,
     handleScrollToIndexFailed,
     scrollToToday,
+    scrollToMonth,
     onListLayout,
   };
 }
