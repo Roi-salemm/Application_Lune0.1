@@ -12,9 +12,10 @@ type MonthCardProps = {
   year: number;
   monthIndex: number;
   onPick: (year: number, monthIndex: number) => void;
+  onLayout?: (event: { nativeEvent: { layout: { height: number } } }) => void;
 };
 
-const MonthCard = memo(function MonthCard({ year, monthIndex, onPick }: MonthCardProps) {
+const MonthCard = memo(function MonthCard({ year, monthIndex, onPick, onLayout }: MonthCardProps) {
   const { days, leadingEmpty, trailingEmpty } = useMemo(() => {
     const count = getDaysInMonth(year, monthIndex);
     const startOffset = getStartOffset(year, monthIndex);
@@ -28,7 +29,7 @@ const MonthCard = memo(function MonthCard({ year, monthIndex, onPick }: MonthCar
   }, [monthIndex, year]);
 
   return (
-    <Pressable style={styles.monthCard} onPress={() => onPick(year, monthIndex)}>
+    <Pressable style={styles.monthCard} onPress={() => onPick(year, monthIndex)} onLayout={onLayout}>
       <Text style={styles.monthLabel}>{MONTHS[monthIndex]}</Text>
       <View style={styles.dayGrid}>
         {Array.from({ length: leadingEmpty }, (_, index) => (
@@ -51,14 +52,25 @@ export default function MonthPickerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ year?: string; month?: string }>();
   const today = useMemo(() => new Date(), []);
+  const targetYear = useMemo(() => {
+    const raw = params.year ? Number(params.year) : NaN;
+    return Number.isFinite(raw) ? raw : today.getFullYear();
+  }, [params.year, today]);
   const scale = useRef(new Animated.Value(0.96)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const listRef = useRef<SectionList<number>>(null);
   const userScrollRef = useRef(false);
-  const [yearRange, setYearRange] = useState(() => {
-    const current = today.getFullYear();
-    return { start: current, end: current };
-  });
+  const lastScrollYRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  const layoutHeightRef = useRef(0);
+  const didScrollToTargetRef = useRef(false);
+  const [target, setTarget] = useState<{ year: number; monthIndex: number } | null>(null);
+  const [targetCardHeight, setTargetCardHeight] = useState<number | null>(null);
+  const yearOffsetsRef = useRef(new Map<number, number>());
+  const [yearRange, setYearRange] = useState(() => ({
+    start: targetYear,
+    end: targetYear,
+  }));
 
   const years = useMemo(() => {
     const currentYear = today.getFullYear();
@@ -96,27 +108,20 @@ export default function MonthPickerScreen() {
   }, [router]);
 
   useEffect(() => {
-    if (!params.year) {
+    const targetMonthNumber = Number(params.month);
+    if (!Number.isFinite(targetMonthNumber)) {
       return;
     }
-    const targetYear = Number(params.year);
-    if (!Number.isFinite(targetYear)) {
-      return;
-    }
-    setYearRange((range) => ({
-      start: Math.min(range.start, targetYear),
-      end: Math.max(range.end, targetYear),
-    }));
-  }, [params.year]);
+    const monthIndex = Math.min(11, Math.max(0, targetMonthNumber - 1));
+    setTarget({ year: targetYear, monthIndex });
+    setTargetCardHeight(null);
+    didScrollToTargetRef.current = false;
+    userScrollRef.current = false;
+    yearOffsetsRef.current.clear();
+    setYearRange({ start: targetYear, end: targetYear });
+  }, [params.month, targetYear]);
 
   useEffect(() => {
-    if (!params.year) {
-      return;
-    }
-    const targetYear = Number(params.year);
-    if (!Number.isFinite(targetYear)) {
-      return;
-    }
     const sectionIndex = sections.findIndex((section) => section.year === targetYear);
     if (sectionIndex === -1) {
       return;
@@ -129,11 +134,31 @@ export default function MonthPickerScreen() {
         animated: false,
       });
     });
-  }, [params.year, sections]);
+  }, [sections, targetYear]);
+
+  useEffect(() => {
+    if (!target || targetCardHeight == null) {
+      return;
+    }
+    const yearOffset = yearOffsetsRef.current.get(target.year);
+    if (yearOffset == null) {
+      return;
+    }
+    if (didScrollToTargetRef.current) {
+      return;
+    }
+    const rowGap = MONTH_ROW_GAP;
+    const rowIndex = Math.floor(target.monthIndex / 3);
+    const offset = yearOffset + rowIndex * (targetCardHeight + rowGap) - YEAR_LIST_PADDING_TOP;
+    didScrollToTargetRef.current = true;
+    requestAnimationFrame(() => {
+      listRef.current?.getScrollResponder()?.scrollTo({ y: Math.max(0, offset), animated: false });
+    });
+  }, [target, targetCardHeight]);
 
 
   const renderSectionHeader = useCallback(
-    ({ section }: { section: { title: string } }) => (
+    ({ section }: { section: { title: string; year: number } }) => (
       <View style={styles.yearHeader}>
         <View style={styles.yearPill}>
           <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
@@ -146,15 +171,29 @@ export default function MonthPickerScreen() {
 
   const renderYear = useCallback(
     ({ item: year }: { item: number }) => (
-      <View style={styles.yearBlock}>
+      <View
+        style={styles.yearBlock}
+        onLayout={(event) => {
+          yearOffsetsRef.current.set(year, event.nativeEvent.layout.y);
+        }}>
         <View style={styles.monthGrid}>
           {MONTHS.map((_, index) => (
-            <MonthCard key={`${year}-${index}`} year={year} monthIndex={index} onPick={handlePick} />
+            <MonthCard
+              key={`${year}-${index}`}
+              year={year}
+              monthIndex={index}
+              onPick={handlePick}
+              onLayout={
+                target && target.year === year && target.monthIndex === index
+                  ? (event) => setTargetCardHeight(event.nativeEvent.layout.height)
+                  : undefined
+              }
+            />
           ))}
         </View>
       </View>
     ),
-    [handlePick],
+    [handlePick, target],
   );
 
   return (
@@ -196,28 +235,37 @@ export default function MonthPickerScreen() {
               return;
             }
           }}
-          onEndReachedThreshold={0.6}
-          onEndReached={() => {
-            if (!userScrollRef.current) {
-              return;
-            }
-            const maxYear = years[years.length - 1];
-            setYearRange((range) => ({
-              start: range.start,
-              end: Math.min(maxYear, range.end + 1),
-            }));
+          onContentSizeChange={(_, height) => {
+            contentHeightRef.current = height;
+          }}
+          onLayout={(event) => {
+            layoutHeightRef.current = event.nativeEvent.layout.height;
           }}
           onScroll={(event) => {
             if (!userScrollRef.current) {
               return;
             }
             const offsetY = event.nativeEvent.contentOffset.y;
-            if (offsetY < 60) {
+            const scrollingUp = offsetY < lastScrollYRef.current;
+            lastScrollYRef.current = offsetY;
+            if (scrollingUp && offsetY <= -20) {
               const minYear = years[0];
               setYearRange((range) => ({
                 start: Math.max(minYear, range.start - 1),
                 end: range.end,
               }));
+            }
+            const layoutHeight = layoutHeightRef.current;
+            const contentHeight = contentHeightRef.current;
+            if (layoutHeight > 0 && contentHeight > 0) {
+              const nearBottom = offsetY + layoutHeight >= contentHeight - 120;
+              if (nearBottom) {
+                const maxYear = years[years.length - 1];
+                setYearRange((range) => ({
+                  start: range.start,
+                  end: Math.min(maxYear, range.end + 1),
+                }));
+              }
             }
           }}
           onScrollBeginDrag={() => {
@@ -231,6 +279,9 @@ export default function MonthPickerScreen() {
     </View>
   );
 }
+
+const YEAR_LIST_PADDING_TOP = 88;
+const MONTH_ROW_GAP = 20;
 
 const styles = StyleSheet.create({
   container: {
@@ -287,13 +338,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   yearList: {
-    paddingBottom: 40,
-    paddingTop: 88,
+    paddingBottom: 12,
+    paddingTop: YEAR_LIST_PADDING_TOP,
   },
   yearBlock: {
     gap: 16,
-    paddingTop: 102,
-    paddingBottom: 14,
+    paddingTop: 118,
+    paddingBottom: 8,
   },
   yearLabel: {
     color: '#E7E9EC',
@@ -314,7 +365,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 20,
+    rowGap: MONTH_ROW_GAP,
   },
   monthCard: {
     width: '31%',

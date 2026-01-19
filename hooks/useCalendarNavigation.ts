@@ -10,11 +10,12 @@ export function useCalendarNavigation(today: Date) {
   const didAutoScroll = useRef(false);
   const [showTodayButton, setShowTodayButton] = useState(false);
   const [listHeight, setListHeight] = useState(0);
-  const [visibleMonthIndex, setVisibleMonthIndex] = useState(0);
+  const startYear = today.getFullYear() - 1;
+  const todayMonthIndex = (today.getFullYear() - startYear) * 12 + today.getMonth();
+  const [visibleMonthIndex, setVisibleMonthIndex] = useState(() => todayMonthIndex);
 
   const months = useMemo(() => {
     const currentYear = today.getFullYear();
-    const startYear = currentYear - 1;
     const endYear = currentYear + 5;
     const list: { year: number; month: number }[] = [];
     for (let year = startYear; year <= endYear; year += 1) {
@@ -23,12 +24,7 @@ export function useCalendarNavigation(today: Date) {
       }
     }
     return list;
-  }, [today]);
-
-  const todayMonthIndex = useMemo(() => {
-    const currentYear = today.getFullYear();
-    return (currentYear - (currentYear - 1)) * 12 + today.getMonth();
-  }, [today]);
+  }, [startYear, today]);
 
   const monthLayouts = useMemo(() => {
     const { cellHeight, rowGap, monthSpacing } = CALENDAR_LAYOUT;
@@ -60,10 +56,9 @@ export function useCalendarNavigation(today: Date) {
 
   const getMonthIndex = useCallback(
     (year: number, month: number) => {
-      const startYear = today.getFullYear() - 1;
       return (year - startYear) * 12 + month;
     },
-    [today],
+    [startYear],
   );
 
   const scrollToMonth = useCallback(
