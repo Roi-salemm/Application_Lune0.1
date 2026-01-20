@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlatList } from 'react-native';
 
-import { CALENDAR_LAYOUT } from '@/constants/calendar';
-import { getDaysInMonth, getStartOffset } from '@/lib/calendar-utils';
+import { CALENDAR_LAYOUT } from '@/calendar/ui/CalendarConstants';
+import { getDaysInMonth, getStartOffset } from '@/calendar/domain/CalendarDateUtils';
 
 export function useCalendarNavigation(today: Date) {
   const listRef = useRef<FlatList<{ year: number; month: number }>>(null);

@@ -2,9 +2,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { DayCell } from '@/components/calendar/DayCell';
-import { formatKey, getWeekStart, isSameDay } from '@/lib/calendar-utils';
-import { NoteItem } from '@/types/calendar';
+import { DayCell } from '@/calendar/ui/DayCell';
+import { formatKey, getWeekStart, isSameDay } from '@/calendar/domain/CalendarDateUtils';
+import { NoteItem } from '@/calendar/types/CalendarTypes';
 
 type WeekViewProps = {
   baseDate: Date;
@@ -34,7 +34,7 @@ export function WeekView({ baseDate, selectedDate, notes, onSelectDate }: WeekVi
               date={date}
               isSelected={isSelected}
               noteColor={noteColor}
-              onPress={() => onSelectDate(date)}
+              onSelectDate={onSelectDate}
             />
           );
         })}

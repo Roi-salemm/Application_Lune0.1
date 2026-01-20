@@ -2,10 +2,10 @@
 import React, { useMemo, useCallback } from 'react';
 import { FlatList, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
-import { DayCell } from '@/components/calendar/DayCell';
-import { CALENDAR_LAYOUT } from '@/constants/calendar';
-import { formatKey, getDaysInMonth, getStartOffset, isSameDay } from '@/lib/calendar-utils';
-import { NoteItem } from '@/types/calendar';
+import { DayCell } from '@/calendar/ui/DayCell';
+import { CALENDAR_LAYOUT } from '@/calendar/ui/CalendarConstants';
+import { formatKey, getDaysInMonth, getStartOffset, isSameDay } from '@/calendar/domain/CalendarDateUtils';
+import { NoteItem } from '@/calendar/types/CalendarTypes';
 
 type MonthListProps = {
   months: Array<{ year: number; month: number }>;

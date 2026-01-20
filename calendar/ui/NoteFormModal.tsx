@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { COLORS, MONTHS, WEEKDAY_LONG } from '@/constants/calendar';
+import { COLORS, MONTHS, WEEKDAY_LONG } from '@/calendar/ui/CalendarConstants';
 
 type NoteFormModalProps = {
   visible: boolean;
@@ -160,7 +160,7 @@ export function NoteFormModal({
 const styles = StyleSheet.create({
   formOverlay: {
     position: 'absolute',
-    top: 0,
+    top: -100,
     left: 0,
     right: 0,
     bottom: 0,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4A4A4A',
     borderRadius: 18,
     padding: 18,
-    maxHeight: '88%',
+    maxHeight: '85%',
   },
   formHeader: {
     flexDirection: 'row',
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   },
   formContent: {
     gap: 12,
-    paddingTop: 12,
+    paddingTop: 15,
     paddingBottom: 6,
   },
   formTitle: {

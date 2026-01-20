@@ -5,9 +5,9 @@ import type { PanResponderInstance } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ThemedText } from '@/components/themed-text';
-import { WEEKDAY_LONG } from '@/constants/calendar';
-import { formatDisplay } from '@/lib/calendar-utils';
-import { NoteItem } from '@/types/calendar';
+import { WEEKDAY_LONG } from '@/calendar/ui/CalendarConstants';
+import { formatDisplay } from '@/calendar/domain/CalendarDateUtils';
+import { NoteItem } from '@/calendar/types/CalendarTypes';
 
 type DayDetailPanelProps = {
   selectedDate: Date | null;
