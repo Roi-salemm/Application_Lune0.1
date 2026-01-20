@@ -5,4 +5,6 @@ export type NoteItem = {
   title: string;
   color: string;
   body: string;
+  alertTime?: string | null;
+  alertNotificationId?: string | null;
 };

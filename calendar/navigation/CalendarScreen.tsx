@@ -16,6 +16,8 @@ import { NoteItem } from '@/calendar/types/CalendarTypes';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
+const DEFAULT_ALERT_TIME = '12:00';
+
 export default function CalendarScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ year?: string; month?: string }>();
@@ -27,6 +29,8 @@ export default function CalendarScreen() {
   const [formBody, setFormBody] = useState('');
   const [formColor, setFormColor] = useState(COLORS[0]);
   const [formDate, setFormDate] = useState<Date>(today);
+  const [isAlertEnabled, setIsAlertEnabled] = useState(false);
+  const [alertTime, setAlertTime] = useState(DEFAULT_ALERT_TIME);
   const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
   const panelTranslateY = useRef(new Animated.Value(0)).current;
   const panelHeightRef = useRef(Dimensions.get('window').height);
@@ -138,12 +142,14 @@ export default function CalendarScreen() {
           title: formTitle,
           body: formBody,
           color: formColor,
+          alertTime: isAlertEnabled ? alertTime : null,
         })
       : await saveNote({
           date: formDate,
           title: formTitle,
           body: formBody,
           color: formColor,
+          alertTime: isAlertEnabled ? alertTime : null,
         });
     if (!saved) {
       return;
@@ -151,6 +157,8 @@ export default function CalendarScreen() {
     setFormTitle('');
     setFormBody('');
     setFormColor(COLORS[0]);
+    setIsAlertEnabled(false);
+    setAlertTime(DEFAULT_ALERT_TIME);
     setFormOpen(false);
     setEditingNote(null);
   };
@@ -168,6 +176,8 @@ export default function CalendarScreen() {
       setFormBody(note.body);
       setFormColor(note.color);
       setFormDate(parseDateKey(note.dateKey));
+      setIsAlertEnabled(Boolean(note.alertTime));
+      setAlertTime(note.alertTime ?? DEFAULT_ALERT_TIME);
       setFormOpen(true);
     },
     [parseDateKey],
@@ -201,6 +211,8 @@ export default function CalendarScreen() {
               setFormBody('');
               setFormColor(COLORS[0]);
               setFormDate(selectedDate ?? today);
+              setIsAlertEnabled(false);
+              setAlertTime(DEFAULT_ALERT_TIME);
               setFormOpen(true);
             }}>
             <ThemedText type="default" style={styles.addButtonText}>
@@ -271,13 +283,19 @@ export default function CalendarScreen() {
         formTitle={formTitle}
         formBody={formBody}
         formColor={formColor}
+        alertEnabled={isAlertEnabled}
+        alertTime={alertTime}
         onChangeDate={setFormDate}
         onChangeTitle={setFormTitle}
         onChangeBody={setFormBody}
         onChangeColor={setFormColor}
+        onChangeAlertEnabled={setIsAlertEnabled}
+        onChangeAlertTime={setAlertTime}
         onClose={() => {
           setFormOpen(false);
           setEditingNote(null);
+          setIsAlertEnabled(false);
+          setAlertTime(DEFAULT_ALERT_TIME);
         }}
         onSave={handleSaveNote}
         headerTitle={editingNote ? 'Modifier la note' : 'Nouvelle notte'}

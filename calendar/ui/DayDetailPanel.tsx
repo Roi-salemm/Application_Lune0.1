@@ -1,7 +1,7 @@
 // Detail panel for a selected day with notes list.
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import React from 'react';
-import { Alert, Animated, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Animated, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native';
 import type { PanResponderInstance } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -19,6 +19,10 @@ type DayDetailPanelProps = {
   onDeleteNote?: (note: NoteItem) => void;
 };
 
+const MENU_PADDING = 12;
+const MENU_FALLBACK_WIDTH = 150;
+const MENU_FALLBACK_HEIGHT = 94;
+
 export function DayDetailPanel({
   selectedDate,
   selectedNotes,
@@ -27,25 +31,148 @@ export function DayDetailPanel({
   onEditNote,
   onDeleteNote,
 }: DayDetailPanelProps) {
-  const handleNoteMenu = (note: NoteItem) => {
-    Alert.alert('Note', 'Choisir une action', [
-      {
-        text: 'Modifier',
-        onPress: () => onEditNote?.(note),
-      },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: () => onDeleteNote?.(note),
-      },
-      { text: 'Annuler', style: 'cancel' },
-    ]);
-  };
+  const menuButtonRefs = useRef<Record<string, React.ElementRef<typeof Pressable> | null>>({});
+  const [menuState, setMenuState] = useState<{
+    note: NoteItem;
+    anchor: { x: number; y: number; width: number; height: number };
+  } | null>(null);
+  const [menuLayout, setMenuLayout] = useState<{ width: number; height: number } | null>(null);
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState<NoteItem | null>(null);
+  const windowSize = Dimensions.get('window');
+
+  const closeMenu = useCallback(() => {
+    setMenuState(null);
+  }, []);
+
+  const handleMenuPress = useCallback((note: NoteItem) => {
+    setMenuLayout(null);
+    if (menuState?.note.id === note.id) {
+      closeMenu();
+      return;
+    }
+
+    const target = menuButtonRefs.current[note.id];
+    const measureTarget = target as unknown as {
+      measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void;
+    };
+    if (!measureTarget?.measureInWindow) {
+      setMenuState({
+        note,
+        anchor: { x: MENU_PADDING, y: MENU_PADDING, width: 0, height: 0 },
+      });
+      return;
+    }
+    measureTarget.measureInWindow((x, y, width, height) => {
+      setMenuState({
+        note,
+        anchor: { x, y, width, height },
+      });
+    });
+  }, [closeMenu, menuState]);
+
+  const menuPosition = useMemo(() => {
+    if (!menuState) {
+      return { top: 0, left: 0 };
+    }
+    const menuWidth = menuLayout?.width ?? MENU_FALLBACK_WIDTH;
+    const menuHeight = menuLayout?.height ?? MENU_FALLBACK_HEIGHT;
+    const maxLeft = windowSize.width - menuWidth - MENU_PADDING;
+    const left = Math.min(
+      Math.max(menuState.anchor.x + menuState.anchor.width - menuWidth, MENU_PADDING),
+      maxLeft,
+    );
+    let top = menuState.anchor.y - menuHeight - 8;
+    if (top < MENU_PADDING) {
+      top = menuState.anchor.y + menuState.anchor.height + 8;
+    }
+    return { top, left };
+  }, [menuLayout, menuState, windowSize.width]);
+
+  const handleEditPress = useCallback(() => {
+    if (!menuState) {
+      return;
+    }
+    onEditNote?.(menuState.note);
+    closeMenu();
+  }, [closeMenu, menuState, onEditNote]);
+
+  const handleDeletePress = useCallback(() => {
+    if (!menuState) {
+      return;
+    }
+    setConfirmDeleteNote(menuState.note);
+    closeMenu();
+  }, [closeMenu, menuState, onDeleteNote]);
+
+  const handleCancelDelete = useCallback(() => {
+    setConfirmDeleteNote(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!confirmDeleteNote) {
+      return;
+    }
+    onDeleteNote?.(confirmDeleteNote);
+    setConfirmDeleteNote(null);
+  }, [confirmDeleteNote, onDeleteNote]);
 
   return (
     <Animated.View
       style={[styles.detailPanel, { transform: [{ translateY: panelTranslateY }] }]}
       {...panHandlers}>
+      <Modal
+        transparent
+        visible={Boolean(menuState)}
+        onRequestClose={closeMenu}
+        animationType="fade">
+        <Pressable style={styles.menuBackdrop} onPress={closeMenu} />
+        {menuState ? (
+          <View
+            style={[styles.noteMenu, { top: menuPosition.top, left: menuPosition.left }]}
+            onLayout={(event) => {
+              const { width, height } = event.nativeEvent.layout;
+              if (!menuLayout || menuLayout.width !== width || menuLayout.height !== height) {
+                setMenuLayout({ width, height });
+              }
+            }}>
+            <Pressable style={styles.noteMenuItem} onPress={handleEditPress}>
+              <ThemedText type="default" style={styles.noteMenuText}>
+                Modifier
+              </ThemedText>
+            </Pressable>
+            <View style={styles.noteMenuDivider} />
+            <Pressable style={styles.noteMenuItem} onPress={handleDeletePress}>
+              <ThemedText type="default" style={styles.noteMenuText}>
+                Supprimer
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : null}
+      </Modal>
+      <Modal
+        transparent
+        visible={Boolean(confirmDeleteNote)}
+        onRequestClose={handleCancelDelete}
+        animationType="fade">
+        <Pressable style={styles.confirmBackdrop} onPress={handleCancelDelete} />
+        <View style={styles.confirmCard}>
+          <ThemedText type="default" style={styles.confirmTitle}>
+            Supprimer la note ?
+          </ThemedText>
+          <View style={styles.confirmActions}>
+            <Pressable style={styles.confirmButton} onPress={handleCancelDelete}>
+              <ThemedText type="default" style={styles.confirmButtonText}>
+                Annuler
+              </ThemedText>
+            </Pressable>
+            <Pressable style={[styles.confirmButton, styles.confirmButtonDanger]} onPress={handleConfirmDelete}>
+              <ThemedText type="default" style={styles.confirmButtonText}>
+                Supprimer
+              </ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <ThemedText type="title" style={styles.detailTitle}>
         {selectedDate
           ? `${WEEKDAY_LONG[(selectedDate.getDay() + 6) % 7]} ${formatDisplay(selectedDate)}`
@@ -69,7 +196,10 @@ export function DayDetailPanel({
                   </ThemedText>
                   <Pressable
                     style={styles.noteMenuButton}
-                    onPress={() => handleNoteMenu(note)}>
+                    onPress={() => handleMenuPress(note)}
+                    ref={(node) => {
+                      menuButtonRefs.current[note.id] = node;
+                    }}>
                     <MaterialIcons name="more-vert" size={16} color="#C9CDD2" />
                   </Pressable>
                 </View>
@@ -101,6 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 18,
     gap: 16,
+    position: 'relative',
   },
   detailTitle: {
     fontSize: 20,
@@ -160,5 +291,68 @@ const styles = StyleSheet.create({
   },
   emptyNotes: {
     opacity: 0.6,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  noteMenu: {
+    position: 'absolute',
+    width: MENU_FALLBACK_WIDTH,
+    backgroundColor: '#3A3B3E',
+    borderRadius: 12,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  noteMenuItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  noteMenuText: {
+    color: '#E7E9EC',
+    fontSize: 14,
+  },
+  noteMenuDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  confirmBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmCard: {
+    marginHorizontal: 28,
+    marginTop: '60%',
+    backgroundColor: '#2F3134',
+    borderRadius: 16,
+    padding: 18,
+    gap: 16,
+  },
+  confirmTitle: {
+    color: '#E7E9EC',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+  },
+  confirmButtonDanger: {
+    backgroundColor: '#4A2D2D',
+  },
+  confirmButtonText: {
+    color: '#E7E9EC',
+    fontSize: 14,
   },
 });

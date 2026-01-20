@@ -7,6 +7,8 @@ type UpdateCalendarNoteInput = {
   title: string;
   body: string;
   color: string;
+  alertTime?: string | null;
+  alertNotificationId?: string | null;
   notes: Record<string, NoteItem[]>;
 };
 
@@ -16,6 +18,8 @@ export function updateCalendarNote({
   title,
   body,
   color,
+  alertTime,
+  alertNotificationId,
   notes,
 }: UpdateCalendarNoteInput) {
   if (!date || !title.trim()) {
@@ -31,6 +35,8 @@ export function updateCalendarNote({
     title: trimmedTitle,
     body: trimmedBody,
     color,
+    alertTime: alertTime ?? null,
+    alertNotificationId: alertNotificationId ?? null,
   };
 
   const currentList = notes[note.dateKey] ?? [];

@@ -1,7 +1,8 @@
 // Notes logic: load/save notes and expose selected-day notes.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { formatKey } from '@/calendar/domain/CalendarDateUtils';
+import { applyTimeToDate, formatKey } from '@/calendar/domain/CalendarDateUtils';
+import { cancelCalendarAlert, scheduleCalendarAlert } from '@/calendar/services/CalendarNotificationsService';
 import { addCalendarNote } from '@/calendar/usecases/AddCalendarNote';
 import { deleteCalendarNote } from '@/calendar/usecases/DeleteCalendarNote';
 import { deleteCalendarNoteRecord } from '@/calendar/usecases/DeleteCalendarNoteRecord';
@@ -16,6 +17,7 @@ type SaveNoteInput = {
   title: string;
   body: string;
   color: string;
+  alertTime?: string | null;
 };
 
 export function useCalendarNotes(selectedDate: Date | null, today: Date) {
@@ -29,20 +31,44 @@ export function useCalendarNotes(selectedDate: Date | null, today: Date) {
     loadNotes();
   }, []);
 
-  const saveNote = useCallback(async ({ date, title, body, color }: SaveNoteInput) => {
+  const saveNote = useCallback(async ({ date, title, body, color, alertTime }: SaveNoteInput) => {
+    if (!date || !title.trim()) {
+      return false;
+    }
+
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+    const createdAt = Date.now();
+    let alertNotificationId: string | null = null;
+    if (alertTime) {
+      const triggerDate = applyTimeToDate(date, alertTime);
+      alertNotificationId = await scheduleCalendarAlert({
+        title: trimmedTitle,
+        body: trimmedBody,
+        triggerDate,
+      });
+    }
+
     let newNote: NoteItem | null = null;
-    let createdAt: number | null = null;
     setNotes((prev) => {
-      const result = addCalendarNote({ date, title, body, color, notes: prev });
+      const result = addCalendarNote({
+        date,
+        title: trimmedTitle,
+        body: trimmedBody,
+        color,
+        alertTime,
+        alertNotificationId,
+        createdAt,
+        notes: prev,
+      });
       if (!result) {
         return prev;
       }
       newNote = result.newNote;
-      createdAt = result.createdAt;
       return result.nextNotes;
     });
 
-    if (!newNote || createdAt == null) {
+    if (!newNote) {
       return false;
     }
 
@@ -50,10 +76,40 @@ export function useCalendarNotes(selectedDate: Date | null, today: Date) {
   }, []);
 
   const updateNote = useCallback(
-    async ({ note, date, title, body, color }: SaveNoteInput & { note: NoteItem }) => {
+    async ({ note, date, title, body, color, alertTime }: SaveNoteInput & { note: NoteItem }) => {
+      if (!date || !title.trim()) {
+        return false;
+      }
+
+      const trimmedTitle = title.trim();
+      const trimmedBody = body.trim();
+      const hadAlert = Boolean(note.alertNotificationId);
+      if (hadAlert && note.alertNotificationId) {
+        await cancelCalendarAlert(note.alertNotificationId);
+      }
+
+      let nextAlertId: string | null = null;
+      if (alertTime) {
+        const triggerDate = applyTimeToDate(date, alertTime);
+        nextAlertId = await scheduleCalendarAlert({
+          title: trimmedTitle,
+          body: trimmedBody,
+          triggerDate,
+        });
+      }
+
       let updatedNote: NoteItem | null = null;
       setNotes((prev) => {
-        const result = updateCalendarNote({ note, date, title, body, color, notes: prev });
+        const result = updateCalendarNote({
+          note,
+          date,
+          title: trimmedTitle,
+          body: trimmedBody,
+          color,
+          alertTime,
+          alertNotificationId: nextAlertId,
+          notes: prev,
+        });
         if (!result) {
           return prev;
         }
@@ -71,6 +127,9 @@ export function useCalendarNotes(selectedDate: Date | null, today: Date) {
   );
 
   const deleteNote = useCallback(async (note: NoteItem) => {
+    if (note.alertNotificationId) {
+      await cancelCalendarAlert(note.alertNotificationId);
+    }
     let shouldDelete = false;
     setNotes((prev) => {
       const result = deleteCalendarNote({ note, notes: prev });

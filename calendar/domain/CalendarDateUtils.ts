@@ -44,3 +44,28 @@ export function parseDateKey(dateKey: string) {
   }
   return new Date(year, month - 1, day);
 }
+
+export function formatTimeValue(date: Date) {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+export function formatTimeLabel(timeValue: string) {
+  const [hours = '00', minutes = '00'] = timeValue.split(':');
+  return `${hours.padStart(2, '0')}H${minutes.padStart(2, '0')}`;
+}
+
+export function parseTimeValue(timeValue: string) {
+  const [hours = '0', minutes = '0'] = timeValue.split(':');
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  return date;
+}
+
+export function applyTimeToDate(date: Date, timeValue: string) {
+  const [hours = '0', minutes = '0'] = timeValue.split(':');
+  const next = new Date(date);
+  next.setHours(Number(hours), Number(minutes), 0, 0);
+  return next;
+}

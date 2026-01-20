@@ -14,6 +14,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { COLORS, MONTHS, WEEKDAY_LONG } from '@/calendar/ui/CalendarConstants';
+import { formatTimeLabel, formatTimeValue, parseTimeValue } from '@/calendar/domain/CalendarDateUtils';
 
 type NoteFormModalProps = {
   visible: boolean;
@@ -21,12 +22,16 @@ type NoteFormModalProps = {
   formTitle: string;
   formBody: string;
   formColor: string;
+  alertEnabled: boolean;
+  alertTime: string;
   headerTitle?: string;
   submitLabel?: string;
   onChangeDate: (value: Date) => void;
   onChangeTitle: (value: string) => void;
   onChangeBody: (value: string) => void;
   onChangeColor: (value: string) => void;
+  onChangeAlertEnabled: (value: boolean) => void;
+  onChangeAlertTime: (value: string) => void;
   onClose: () => void;
   onSave: () => void;
 };
@@ -37,12 +42,16 @@ export function NoteFormModal({
   formTitle,
   formBody,
   formColor,
+  alertEnabled,
+  alertTime,
   headerTitle,
   submitLabel,
   onChangeDate,
   onChangeTitle,
   onChangeBody,
   onChangeColor,
+  onChangeAlertEnabled,
+  onChangeAlertTime,
   onClose,
   onSave,
 }: NoteFormModalProps) {
@@ -51,6 +60,7 @@ export function NoteFormModal({
   }
 
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showAlertTimePicker, setShowAlertTimePicker] = useState(false);
   const effectiveDate = selectedDate ?? new Date();
   const effectiveHeaderTitle = headerTitle ?? 'Nouvelle notte';
   const effectiveSubmitLabel = submitLabel ?? 'Ajouter';
@@ -58,6 +68,13 @@ export function NoteFormModal({
     const weekday = WEEKDAY_LONG[(effectiveDate.getDay() + 6) % 7];
     return `${weekday} | ${effectiveDate.getDate()} | ${MONTHS[effectiveDate.getMonth()]} | ${effectiveDate.getFullYear()}`;
   }, [effectiveDate]);
+  const alertTimeLabel = useMemo(() => formatTimeLabel(alertTime), [alertTime]);
+  const handleAlertToggle = (value: boolean) => {
+    if (!value) {
+      setShowAlertTimePicker(false);
+    }
+    onChangeAlertEnabled(value);
+  };
 
   return (
     <View style={styles.formOverlay}>
@@ -140,10 +157,43 @@ export function NoteFormModal({
             <ThemedText type="default" style={styles.switchLabel}>
               Ajouter une alerte
             </ThemedText>
-            <ThemedText type="default" style={styles.switchValue}>
-              Aucune
-            </ThemedText>
+            <Switch
+              value={alertEnabled}
+              onValueChange={handleAlertToggle}
+              thumbColor="#E7E9EC"
+              trackColor={{ false: '#2B2B2B', true: '#D3B658' }}
+            />
           </View>
+          {alertEnabled ? (
+            <>
+              <Pressable
+                style={styles.alertTimeRow}
+                onPress={() => setShowAlertTimePicker(true)}>
+                <ThemedText type="default" style={styles.switchLabel}>
+                  Heure de l&apos;evenement
+                </ThemedText>
+                <ThemedText type="default" style={styles.alertTimeValue}>
+                  {alertTimeLabel}
+                </ThemedText>
+              </Pressable>
+              {showAlertTimePicker ? (
+                <DateTimePicker
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  value={parseTimeValue(alertTime)}
+                  textColor={Platform.OS === 'ios' ? '#E7E9EC' : undefined}
+                  onChange={(_, date) => {
+                    if (Platform.OS !== 'ios') {
+                      setShowAlertTimePicker(false);
+                    }
+                    if (date) {
+                      onChangeAlertTime(formatTimeValue(date));
+                    }
+                  }}
+                />
+              ) : null}
+            </>
+          ) : null}
           <View style={styles.switchRow}>
             <ThemedText type="default" style={styles.switchLabel}>
               Sauvegarde cloud
@@ -165,7 +215,7 @@ export function NoteFormModal({
 const styles = StyleSheet.create({
   formOverlay: {
     position: 'absolute',
-    top: -100,
+    top: -90,
     left: 0,
     right: 0,
     bottom: 0,
@@ -276,6 +326,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   switchValue: {
+    color: '#C9CDD2',
+    fontSize: 13,
+  },
+  alertTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#3E3E3E',
+  },
+  alertTimeValue: {
     color: '#C9CDD2',
     fontSize: 13,
   },
