@@ -11,7 +11,8 @@ import { WeekView } from '@/calendar/ui/WeekView';
 import { COLORS, MONTHS, WEEKDAYS } from '@/calendar/ui/CalendarConstants';
 import { useCalendarNavigation } from '@/calendar/state/UseCalendarNavigation';
 import { useCalendarNotes } from '@/calendar/state/UseCalendarNotes';
-import { isSameDay } from '@/calendar/domain/CalendarDateUtils';
+import { isSameDay, parseDateKey } from '@/calendar/domain/CalendarDateUtils';
+import { NoteItem } from '@/calendar/types/CalendarTypes';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
@@ -26,6 +27,7 @@ export default function CalendarScreen() {
   const [formBody, setFormBody] = useState('');
   const [formColor, setFormColor] = useState(COLORS[0]);
   const [formDate, setFormDate] = useState<Date>(today);
+  const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
   const panelTranslateY = useRef(new Animated.Value(0)).current;
   const panelHeightRef = useRef(Dimensions.get('window').height);
 
@@ -45,7 +47,10 @@ export default function CalendarScreen() {
   const visibleMonth = months[visibleMonthIndex] ?? { year: today.getFullYear(), month: today.getMonth() };
   const headerLabel = `${MONTHS[visibleMonth.month]} ${visibleMonth.year}`;
 
-  const { notes, selectedNotes, saveNote } = useCalendarNotes(selectedDate, today);
+  const { notes, selectedNotes, saveNote, updateNote, deleteNote } = useCalendarNotes(
+    selectedDate,
+    today,
+  );
 
   useEffect(() => {
     if (!params.year || !params.month) {
@@ -126,12 +131,20 @@ export default function CalendarScreen() {
 
   // Persist a new note to state and storage.
   const handleSaveNote = async () => {
-    const saved = await saveNote({
-      date: formDate,
-      title: formTitle,
-      body: formBody,
-      color: formColor,
-    });
+    const saved = editingNote
+      ? await updateNote({
+          note: editingNote,
+          date: formDate,
+          title: formTitle,
+          body: formBody,
+          color: formColor,
+        })
+      : await saveNote({
+          date: formDate,
+          title: formTitle,
+          body: formBody,
+          color: formColor,
+        });
     if (!saved) {
       return;
     }
@@ -139,6 +152,7 @@ export default function CalendarScreen() {
     setFormBody('');
     setFormColor(COLORS[0]);
     setFormOpen(false);
+    setEditingNote(null);
   };
 
   const handleTodayPress = () => {
@@ -146,6 +160,25 @@ export default function CalendarScreen() {
     setPanelOpen(false);
     scrollToToday();
   };
+
+  const handleEditNote = useCallback(
+    (note: NoteItem) => {
+      setEditingNote(note);
+      setFormTitle(note.title);
+      setFormBody(note.body);
+      setFormColor(note.color);
+      setFormDate(parseDateKey(note.dateKey));
+      setFormOpen(true);
+    },
+    [parseDateKey],
+  );
+
+  const handleDeleteNote = useCallback(
+    async (note: NoteItem) => {
+      await deleteNote(note);
+    },
+    [deleteNote],
+  );
 
   return (
     <ThemedView style={styles.container}>
@@ -163,6 +196,10 @@ export default function CalendarScreen() {
           <Pressable
             style={styles.addButton}
             onPress={() => {
+              setEditingNote(null);
+              setFormTitle('');
+              setFormBody('');
+              setFormColor(COLORS[0]);
               setFormDate(selectedDate ?? today);
               setFormOpen(true);
             }}>
@@ -211,6 +248,8 @@ export default function CalendarScreen() {
               selectedNotes={selectedNotes}
               panelTranslateY={panelTranslateY}
               panHandlers={panResponder.panHandlers}
+              onEditNote={handleEditNote}
+              onDeleteNote={handleDeleteNote}
             />
           </View>
         ) : null}
@@ -236,8 +275,13 @@ export default function CalendarScreen() {
         onChangeTitle={setFormTitle}
         onChangeBody={setFormBody}
         onChangeColor={setFormColor}
-        onClose={() => setFormOpen(false)}
+        onClose={() => {
+          setFormOpen(false);
+          setEditingNote(null);
+        }}
         onSave={handleSaveNote}
+        headerTitle={editingNote ? 'Modifier la note' : 'Nouvelle notte'}
+        submitLabel={editingNote ? 'Modifier' : 'Ajouter'}
       />
     </ThemedView>
   );

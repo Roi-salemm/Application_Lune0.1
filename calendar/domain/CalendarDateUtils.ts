@@ -36,3 +36,11 @@ export function getWeekStart(date: Date) {
   d.setDate(d.getDate() - offset);
   return d;
 }
+
+export function parseDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return new Date();
+  }
+  return new Date(year, month - 1, day);
+}

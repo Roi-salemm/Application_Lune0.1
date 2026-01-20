@@ -3,7 +3,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useMemo, useState } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -22,6 +21,8 @@ type NoteFormModalProps = {
   formTitle: string;
   formBody: string;
   formColor: string;
+  headerTitle?: string;
+  submitLabel?: string;
   onChangeDate: (value: Date) => void;
   onChangeTitle: (value: string) => void;
   onChangeBody: (value: string) => void;
@@ -36,6 +37,8 @@ export function NoteFormModal({
   formTitle,
   formBody,
   formColor,
+  headerTitle,
+  submitLabel,
   onChangeDate,
   onChangeTitle,
   onChangeBody,
@@ -49,13 +52,15 @@ export function NoteFormModal({
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const effectiveDate = selectedDate ?? new Date();
+  const effectiveHeaderTitle = headerTitle ?? 'Nouvelle notte';
+  const effectiveSubmitLabel = submitLabel ?? 'Ajouter';
   const dateLabel = useMemo(() => {
     const weekday = WEEKDAY_LONG[(effectiveDate.getDay() + 6) % 7];
     return `${weekday} | ${effectiveDate.getDate()} | ${MONTHS[effectiveDate.getMonth()]} | ${effectiveDate.getFullYear()}`;
   }, [effectiveDate]);
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.formOverlay}>
+    <View style={styles.formOverlay}>
       <Pressable style={styles.formBackdrop} onPress={Keyboard.dismiss} />
       <View style={styles.formCard}>
         <View style={styles.formHeader}>
@@ -65,11 +70,11 @@ export function NoteFormModal({
             </ThemedText>
           </Pressable>
           <ThemedText type="default" style={styles.formTitle}>
-            Nouvelle notte
+            {effectiveHeaderTitle}
           </ThemedText>
           <Pressable style={[styles.headerButton, styles.headerButtonPrimary]} onPress={onSave}>
             <ThemedText type="default" style={styles.headerButtonText}>
-              Ajouter
+              {effectiveSubmitLabel}
             </ThemedText>
           </Pressable>
         </View>
@@ -153,7 +158,7 @@ export function NoteFormModal({
           </View>
         </ScrollView>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

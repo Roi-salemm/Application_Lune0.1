@@ -1,6 +1,7 @@
 // Detail panel for a selected day with notes list.
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Pressable, StyleSheet, View } from 'react-native';
 import type { PanResponderInstance } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -14,6 +15,8 @@ type DayDetailPanelProps = {
   selectedNotes: NoteItem[];
   panelTranslateY: Animated.Value;
   panHandlers?: PanResponderInstance['panHandlers'];
+  onEditNote?: (note: NoteItem) => void;
+  onDeleteNote?: (note: NoteItem) => void;
 };
 
 export function DayDetailPanel({
@@ -21,7 +24,24 @@ export function DayDetailPanel({
   selectedNotes,
   panelTranslateY,
   panHandlers,
+  onEditNote,
+  onDeleteNote,
 }: DayDetailPanelProps) {
+  const handleNoteMenu = (note: NoteItem) => {
+    Alert.alert('Note', 'Choisir une action', [
+      {
+        text: 'Modifier',
+        onPress: () => onEditNote?.(note),
+      },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: () => onDeleteNote?.(note),
+      },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  };
+
   return (
     <Animated.View
       style={[styles.detailPanel, { transform: [{ translateY: panelTranslateY }] }]}
@@ -43,9 +63,16 @@ export function DayDetailPanel({
             <View key={note.id} style={styles.noteRow}>
               <View style={[styles.noteDotLarge, { backgroundColor: note.color }]} />
               <View style={styles.noteTextBlock}>
-                <ThemedText type="default" style={styles.noteTitle}>
-                  {note.title}
-                </ThemedText>
+                <View style={styles.noteTitleRow}>
+                  <ThemedText type="default" style={styles.noteTitle}>
+                    {note.title}
+                  </ThemedText>
+                  <Pressable
+                    style={styles.noteMenuButton}
+                    onPress={() => handleNoteMenu(note)}>
+                    <MaterialIcons name="more-vert" size={16} color="#C9CDD2" />
+                  </Pressable>
+                </View>
                 {note.body ? (
                   <ThemedText type="default" style={styles.noteBody}>
                     {note.body}
@@ -108,9 +135,24 @@ const styles = StyleSheet.create({
   noteTextBlock: {
     flex: 1,
   },
+  noteTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   noteTitle: {
     fontSize: 16,
     color: '#ffffffff',
+    flex: 1,
+  },
+  noteMenuButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   noteBody: {
     opacity: 0.7,

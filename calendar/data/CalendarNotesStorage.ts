@@ -98,3 +98,34 @@ export async function insertCalendarNoteStorage(
     return false;
   }
 }
+
+export async function updateCalendarNoteStorage(note: NoteItem): Promise<boolean> {
+  try {
+    await ensureNotesTable();
+    const db = await getDatabase();
+    await db.runAsync(
+      `UPDATE ${NOTES_TABLE}
+       SET date_key = ?, title = ?, body = ?, color = ?
+       WHERE id = ?;`,
+      note.dateKey,
+      note.title,
+      note.body,
+      note.color,
+      note.id,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteCalendarNoteStorage(noteId: string): Promise<boolean> {
+  try {
+    await ensureNotesTable();
+    const db = await getDatabase();
+    await db.runAsync(`DELETE FROM ${NOTES_TABLE} WHERE id = ?;`, noteId);
+    return true;
+  } catch {
+    return false;
+  }
+}
