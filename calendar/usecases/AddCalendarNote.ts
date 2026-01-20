@@ -15,8 +15,9 @@ export function addCalendarNote({ date, title, body, color, notes }: AddCalendar
   }
 
   const dateKey = formatKey(date);
+  const createdAt = Date.now();
   const newNote: NoteItem = {
-    id: `${dateKey}-${Date.now()}`,
+    id: `${dateKey}-${createdAt}`,
     dateKey,
     title: title.trim(),
     color,
@@ -28,5 +29,5 @@ export function addCalendarNote({ date, title, body, color, notes }: AddCalendar
     [dateKey]: [...(notes[dateKey] ?? []), newNote],
   };
 
-  return { nextNotes, newNote };
+  return { nextNotes, newNote, createdAt };
 }

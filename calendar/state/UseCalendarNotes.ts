@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatKey } from '@/calendar/domain/CalendarDateUtils';
 import { addCalendarNote } from '@/calendar/usecases/AddCalendarNote';
 import { loadCalendarNotes } from '@/calendar/usecases/LoadCalendarNotes';
-import { saveCalendarNotes } from '@/calendar/usecases/SaveCalendarNotes';
+import { saveCalendarNote } from '@/calendar/usecases/SaveCalendarNote';
 import { NoteItem } from '@/calendar/types/CalendarTypes';
 
 type SaveNoteInput = {
@@ -26,22 +26,23 @@ export function useCalendarNotes(selectedDate: Date | null, today: Date) {
   }, []);
 
   const saveNote = useCallback(async ({ date, title, body, color }: SaveNoteInput) => {
-    let nextNotes: Record<string, NoteItem[]> | null = null;
+    let newNote: NoteItem | null = null;
+    let createdAt: number | null = null;
     setNotes((prev) => {
       const result = addCalendarNote({ date, title, body, color, notes: prev });
       if (!result) {
-        nextNotes = null;
         return prev;
       }
-      nextNotes = result.nextNotes;
+      newNote = result.newNote;
+      createdAt = result.createdAt;
       return result.nextNotes;
     });
 
-    if (!nextNotes) {
+    if (!newNote || createdAt == null) {
       return false;
     }
 
-    return saveCalendarNotes(nextNotes);
+    return saveCalendarNote({ note: newNote, createdAt });
   }, []);
 
   const selectedNotes = useMemo(() => {
