@@ -1,31 +1,57 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+// Couleurs globales de l'app (light/dark) centralisees en tokens semantiques.
+// Pourquoi : garantir une coherance visuelle et permettre de changer un theme sans toucher chaque composant.
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
-
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: '#1B1D21',
+    title: '#111318',
+    annex: '#5E6672',
+    background: '#F7F5F0',
+    border: '#D9D4CC',
+    'unselected-border': '#D0CAC2',
+    surface: '#FFFFFF',
+    'moon-default': '#E2E2E2',
+    'btn-action': '#D3B658',
+    'btn-nav': '#5E6672',
   },
   dark: {
     text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    title: '#F5F6F7',
+    annex: '#C9CDD2',
+    background: '#34363A',
+    border: '#4A4C50',
+    'unselected-border': '#55595F',
+    surface: '#3B3E44',
+    'moon-default': '#E2E2E2',
+    'btn-action': '#D3B658',
+    'btn-nav': '#C7CBD1',
   },
 };
+
+export function withAlpha(color: string, alpha: number) {
+  if (!color.startsWith('#')) {
+    return color;
+  }
+
+  let hex = color.slice(1);
+  if (hex.length === 3) {
+    hex = hex
+      .split('')
+      .map((value) => `${value}${value}`)
+      .join('');
+  }
+  if (hex.length !== 6) {
+    return color;
+  }
+
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  const clamped = Math.max(0, Math.min(1, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${clamped})`;
+}
 
 export const Fonts = Platform.select({
   ios: {

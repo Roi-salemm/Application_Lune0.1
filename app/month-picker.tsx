@@ -1,1 +1,1 @@
-export { default } from '@/calendar/navigation/MonthPickerScreen';
+export { default } from '@/features/calendar/navigation/MonthPickerScreen';

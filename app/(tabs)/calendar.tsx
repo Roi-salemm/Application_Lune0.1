@@ -1,1 +1,1 @@
-export { default } from '@/calendar/navigation/CalendarScreen';
+export { default } from '@/features/calendar/CalendarScreen';

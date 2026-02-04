@@ -2,22 +2,23 @@ import { Tabs, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 
-import { BottomMenu } from '@/components/bottom-menu';
-import { HapticTab } from '@/components/haptic-tab';
-import { ThemedView } from '@/components/themed-view';
+import { BottomMenu } from '@/components/shared/bottom-menu';
+import { HapticTab } from '@/components/shared/haptic-tab';
+import { ThemedView } from '@/components/shared/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+const TAB_ROUTES = ['/', '/calendar', '/lunar-calendar', '/mancy', '/profile'] as const;
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const pathname = usePathname();
 
-  const routes = ['/', '/calendar', '/lunaison', '/notes', '/profile'];
-  const activeIndex = Math.max(routes.indexOf(pathname), 0);
+  const activeIndex = Math.max(TAB_ROUTES.indexOf(pathname), 0);
   const handleMenuPress = (index: number) => {
-    const target = routes[index] ?? '/';
+    const target = TAB_ROUTES[index] ?? '/';
     router.push(target);
   };
 
@@ -38,31 +39,24 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="explore"
-          options={{
-            title: 'Explore',
-            tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="lunaison"
-          options={{
-            title: 'Lunaison',
-            tabBarIcon: ({ color }) => <IconSymbol size={28} name="moon.fill" color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="notes"
-          options={{
-            title: 'Notes',
-            tabBarIcon: ({ color }) => <IconSymbol size={28} name="star.fill" color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="calendar"
           options={{
             title: 'Calendar',
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="book.fill" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="lunar-calendar"
+          options={{
+            title: 'Lunar Calendar',
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="moon.fill" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="mancy"
+          options={{
+            title: 'Mancy',
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="star.fill" color={color} />,
           }}
         />
         <Tabs.Screen
