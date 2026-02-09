@@ -1,5 +1,5 @@
 // Utilitaires SQL pour les timestamps et conversions numeriques des tables lunaires.
-// Pourquoi : partager les helpers entre les lectures ephemerides et evenements.
+// Pourquoi : partager les helpers entre les lectures canonique et ms_mapping.
 
 function pad2(value: number) {
   return String(value).padStart(2, '0');

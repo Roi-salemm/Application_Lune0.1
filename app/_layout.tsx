@@ -8,7 +8,7 @@ import 'react-native-reanimated';
 
 import { FeatureSettingsProvider } from '@/core/feature-flags/feature-settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { syncMoonCaches, syncMoonCanoniqueData } from '@/features/moon/moon.sync';
+import { syncMoonCanoniqueData } from '@/features/moon/moon.sync';
 import { Colors } from '@/constants/theme';
 
 export const unstable_settings = {
@@ -23,14 +23,6 @@ export default function RootLayout() {
     const controller = new AbortController();
 
     const syncMoonData = async () => {
-      try {
-        await syncMoonCaches({ signal: controller.signal });
-      } catch (error) {
-        if ((error as Error).name === 'AbortError') {
-          return;
-        }
-        console.warn('Failed to sync moon data', error);
-      }
       try {
         await syncMoonCanoniqueData({ signal: controller.signal });
       } catch (error) {

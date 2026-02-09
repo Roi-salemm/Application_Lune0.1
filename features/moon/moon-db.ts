@@ -1,68 +1,12 @@
-// Acces SQLite aux caches lunaires (ephemerides, phases, canonique).
+// Acces SQLite aux caches lunaires (canonique, ms_mapping).
 // Pourquoi : centraliser la creation des tables et les operations d'ecriture.
 import * as SQLite from 'expo-sqlite';
 
-import type { MoonCanoniqueRow, MoonEphemerisRow } from '@/features/moon/moon.api';
+import type { MoonCanoniqueRow, MoonMsMappingRow } from '@/features/moon/moon.api';
 
 const DB_NAME = 'moon_ephemeris.db';
-const EPHEMERIS_TABLE = 'moon_ephemeris_hour';
-const PHASE_EVENT_TABLE = 'moon_phase_event';
 const CANONIQUE_TABLE = 'canonique_data';
-
-type MoonPhaseEventInsertRow = {
-  ts_utc: string;
-  display_at_utc?: string | null;
-  event_type?: string | null;
-  phase_name?: string | null;
-  phase_deg?: number | string | null;
-  illum_pct?: number | string | null;
-  precision_sec?: number | string | null;
-  source?: string | null;
-};
-
-const EPHEMERIS_COLUMNS = [
-  { name: 'ts_utc', type: 'TEXT PRIMARY KEY' },
-  { name: 'phase_deg', type: 'REAL' },
-  { name: 'illum_pct', type: 'REAL' },
-  { name: 'age_days', type: 'REAL' },
-  { name: 'diam_km', type: 'REAL' },
-  { name: 'dist_km', type: 'REAL' },
-  { name: 'ra_hours', type: 'REAL' },
-  { name: 'dec_deg', type: 'REAL' },
-  { name: 'slon_deg', type: 'REAL' },
-  { name: 'slat_deg', type: 'REAL' },
-  { name: 'sub_obs_lon_deg', type: 'REAL' },
-  { name: 'sub_obs_lat_deg', type: 'REAL' },
-  { name: 'elon_deg', type: 'REAL' },
-  { name: 'elat_deg', type: 'REAL' },
-  { name: 'axis_a_deg', type: 'REAL' },
-  { name: 'delta_au', type: 'REAL' },
-  { name: 'deldot_km_s', type: 'REAL' },
-  { name: 'sun_elong_deg', type: 'REAL' },
-  { name: 'sun_target_obs_deg', type: 'REAL' },
-  { name: 'sun_ra_hours', type: 'REAL' },
-  { name: 'sun_dec_deg', type: 'REAL' },
-  { name: 'sun_ecl_lon_deg', type: 'REAL' },
-  { name: 'sun_ecl_lat_deg', type: 'REAL' },
-  { name: 'sun_dist_au', type: 'REAL' },
-  { name: 'sun_trail', type: 'TEXT' },
-  { name: 'constellation', type: 'TEXT' },
-  { name: 'delta_t_sec', type: 'REAL' },
-  { name: 'dut1_sec', type: 'REAL' },
-  { name: 'pressure_hpa', type: 'REAL' },
-  { name: 'temperature_c', type: 'REAL' },
-];
-
-const PHASE_EVENT_COLUMNS = [
-  { name: 'ts_utc', type: 'TEXT PRIMARY KEY' },
-  { name: 'display_at_utc', type: 'TEXT' },
-  { name: 'event_type', type: 'TEXT' },
-  { name: 'phase_name', type: 'TEXT' },
-  { name: 'phase_deg', type: 'REAL' },
-  { name: 'illum_pct', type: 'REAL' },
-  { name: 'precision_sec', type: 'REAL' },
-  { name: 'source', type: 'TEXT' },
-];
+const MS_MAPPING_TABLE = 'ms_mapping';
 
 const CANONIQUE_COLUMNS = [
   { name: 'ts_utc', type: 'TEXT PRIMARY KEY' },
@@ -81,6 +25,17 @@ const CANONIQUE_COLUMNS = [
   { name: 's31_ecl_lon_deg', type: 'REAL' },
   { name: 's31_ecl_lat_deg', type: 'REAL' },
   { name: 'created_at_utc', type: 'TEXT' },
+];
+
+const MS_MAPPING_COLUMNS = [
+  { name: 'ts_utc', type: 'TEXT PRIMARY KEY' },
+  { name: 'id', type: 'INTEGER' },
+  { name: 'm43_pab_lon_deg', type: 'REAL' },
+  { name: 'm10_illum_frac', type: 'REAL' },
+  { name: 'm31_ecl_lon_deg', type: 'REAL' },
+  { name: 's31_ecl_lon_deg', type: 'REAL' },
+  { name: 'phase', type: 'INTEGER' },
+  { name: 'phase_hour', type: 'TEXT' },
 ];
 
 async function ensureColumns(
@@ -113,208 +68,16 @@ export async function initMoonDb() {
 
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
-    DROP TABLE IF EXISTS moon_ephemeris;
-    DROP TABLE IF EXISTS moon_phase_events;
-    CREATE TABLE IF NOT EXISTS ${EPHEMERIS_TABLE} (${EPHEMERIS_COLUMNS.map((col) => `${col.name} ${col.type}`).join(', ')});
-    CREATE INDEX IF NOT EXISTS idx_moon_ephemeris_hour_ts ON ${EPHEMERIS_TABLE} (ts_utc);
-    CREATE TABLE IF NOT EXISTS ${PHASE_EVENT_TABLE} (${PHASE_EVENT_COLUMNS.map((col) => `${col.name} ${col.type}`).join(', ')});
-    CREATE INDEX IF NOT EXISTS idx_moon_phase_event_ts ON ${PHASE_EVENT_TABLE} (ts_utc);
     CREATE TABLE IF NOT EXISTS ${CANONIQUE_TABLE} (${CANONIQUE_COLUMNS.map((col) => `${col.name} ${col.type}`).join(', ')});
     CREATE INDEX IF NOT EXISTS idx_canonique_data_ts ON ${CANONIQUE_TABLE} (ts_utc);
+    CREATE TABLE IF NOT EXISTS ${MS_MAPPING_TABLE} (${MS_MAPPING_COLUMNS.map((col) => `${col.name} ${col.type}`).join(', ')});
+    CREATE INDEX IF NOT EXISTS idx_ms_mapping_ts ON ${MS_MAPPING_TABLE} (ts_utc);
   `);
 
-  await ensureColumns(db, EPHEMERIS_TABLE, EPHEMERIS_COLUMNS);
-  await ensureColumns(db, PHASE_EVENT_TABLE, PHASE_EVENT_COLUMNS);
   await ensureColumns(db, CANONIQUE_TABLE, CANONIQUE_COLUMNS);
+  await ensureColumns(db, MS_MAPPING_TABLE, MS_MAPPING_COLUMNS);
 
   return db;
-}
-
-export async function hasMoonEphemerisHourRange(db: SQLite.SQLiteDatabase, start: string, end: string) {
-  const row = await db.getFirstAsync<{
-    min_ts: string | null;
-    max_ts: string | null;
-    cnt: number;
-  }>(
-    `SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts, COUNT(*) AS cnt FROM ${EPHEMERIS_TABLE} WHERE ts_utc >= ? AND ts_utc <= ?`,
-    [start, end]
-  );
-
-  if (!row || !row.cnt) {
-    return false;
-  }
-
-  if (!row.min_ts || !row.max_ts) {
-    return false;
-  }
-
-  return row.min_ts <= start && row.max_ts >= end;
-}
-
-export async function upsertMoonEphemerisHourRows(db: SQLite.SQLiteDatabase, rows: MoonEphemerisRow[]) {
-  if (!rows.length) {
-    return;
-  }
-
-  await db.withTransactionAsync(async () => {
-    const statement = await db.prepareAsync(`
-      INSERT OR REPLACE INTO ${EPHEMERIS_TABLE} (
-        ts_utc,
-        phase_deg,
-        illum_pct,
-        age_days,
-        diam_km,
-        dist_km,
-        ra_hours,
-        dec_deg,
-        slon_deg,
-        slat_deg,
-        sub_obs_lon_deg,
-        sub_obs_lat_deg,
-        elon_deg,
-        elat_deg,
-        axis_a_deg,
-        delta_au,
-        deldot_km_s,
-        sun_elong_deg,
-        sun_target_obs_deg,
-        sun_ra_hours,
-        sun_dec_deg,
-        sun_ecl_lon_deg,
-        sun_ecl_lat_deg,
-        sun_dist_au,
-        sun_trail,
-        constellation,
-        delta_t_sec,
-        dut1_sec,
-        pressure_hpa,
-        temperature_c
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    try {
-      for (const row of rows) {
-        await statement.executeAsync([
-          row.ts_utc,
-          row.phase_deg ?? null,
-          row.illum_pct ?? null,
-          row.age_days ?? null,
-          row.diam_km ?? null,
-          row.dist_km ?? null,
-          row.ra_hours ?? null,
-          row.dec_deg ?? null,
-          row.slon_deg ?? null,
-          row.slat_deg ?? null,
-          row.sub_obs_lon_deg ?? null,
-          row.sub_obs_lat_deg ?? null,
-          row.elon_deg ?? null,
-          row.elat_deg ?? null,
-          row.axis_a_deg ?? null,
-          row.delta_au ?? null,
-          row.deldot_km_s ?? null,
-          row.sun_elong_deg ?? null,
-          row.sun_target_obs_deg ?? null,
-          row.sun_ra_hours ?? null,
-          row.sun_dec_deg ?? null,
-          row.sun_ecl_lon_deg ?? null,
-          row.sun_ecl_lat_deg ?? null,
-          row.sun_dist_au ?? null,
-          row.sun_trail ?? null,
-          row.constellation ?? null,
-          row.delta_t_sec ?? null,
-          row.dut1_sec ?? null,
-          row.pressure_hpa ?? null,
-          row.temperature_c ?? null,
-        ]);
-      }
-    } finally {
-      await statement.finalizeAsync();
-    }
-  });
-}
-
-export async function pruneMoonEphemerisHourOutsideRange(
-  db: SQLite.SQLiteDatabase,
-  start: string,
-  end: string
-) {
-  await db.runAsync(
-    `DELETE FROM ${EPHEMERIS_TABLE} WHERE ts_utc < ? OR ts_utc > ?`,
-    [start, end]
-  );
-}
-
-export async function hasMoonPhaseEventRange(db: SQLite.SQLiteDatabase, start: string, end: string) {
-  const row = await db.getFirstAsync<{
-    min_ts: string | null;
-    max_ts: string | null;
-    cnt: number;
-  }>(
-    `SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts, COUNT(*) AS cnt FROM ${PHASE_EVENT_TABLE} WHERE ts_utc >= ? AND ts_utc <= ?`,
-    [start, end]
-  );
-
-  if (!row || !row.cnt) {
-    return false;
-  }
-
-  if (!row.min_ts || !row.max_ts) {
-    return false;
-  }
-
-  return row.min_ts <= start && row.max_ts >= end;
-}
-
-export async function upsertMoonPhaseEventRows(
-  db: SQLite.SQLiteDatabase,
-  rows: MoonPhaseEventInsertRow[]
-) {
-  if (!rows.length) {
-    return;
-  }
-
-  await db.withTransactionAsync(async () => {
-    const statement = await db.prepareAsync(`
-      INSERT OR REPLACE INTO ${PHASE_EVENT_TABLE} (
-        ts_utc,
-        display_at_utc,
-        event_type,
-        phase_name,
-        phase_deg,
-        illum_pct,
-        precision_sec,
-        source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    try {
-      for (const row of rows) {
-        await statement.executeAsync([
-          row.ts_utc,
-          row.display_at_utc ?? null,
-          row.event_type ?? null,
-          row.phase_name ?? null,
-          row.phase_deg ?? null,
-          row.illum_pct ?? null,
-          row.precision_sec ?? null,
-          row.source ?? null,
-        ]);
-      }
-    } finally {
-      await statement.finalizeAsync();
-    }
-  });
-}
-
-export async function pruneMoonPhaseEventOutsideRange(
-  db: SQLite.SQLiteDatabase,
-  start: string,
-  end: string
-) {
-  await db.runAsync(
-    `DELETE FROM ${PHASE_EVENT_TABLE} WHERE ts_utc < ? OR ts_utc > ?`,
-    [start, end]
-  );
 }
 
 export async function getMoonCanoniqueRange(db: SQLite.SQLiteDatabase) {
@@ -400,9 +163,69 @@ export async function pruneMoonCanoniqueOutsideRange(
   );
 }
 
-export async function clearMoonTables(db: SQLite.SQLiteDatabase) {
-  await db.execAsync(`
-    DELETE FROM ${EPHEMERIS_TABLE};
-    DELETE FROM ${PHASE_EVENT_TABLE};
-  `);
+export async function getMsMappingRange(db: SQLite.SQLiteDatabase) {
+  const row = await db.getFirstAsync<{
+    min_ts: string | null;
+    max_ts: string | null;
+    cnt: number;
+  }>(`SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts, COUNT(*) AS cnt FROM ${MS_MAPPING_TABLE}`);
+
+  return {
+    min_ts: row?.min_ts ?? null,
+    max_ts: row?.max_ts ?? null,
+    cnt: row?.cnt ?? 0,
+  };
+}
+
+export async function upsertMsMappingRows(
+  db: SQLite.SQLiteDatabase,
+  rows: MoonMsMappingRow[]
+) {
+  const validRows = rows.filter((row) => row.ts_utc);
+  if (!validRows.length) {
+    return;
+  }
+
+  await db.withTransactionAsync(async () => {
+    const statement = await db.prepareAsync(`
+      INSERT OR REPLACE INTO ${MS_MAPPING_TABLE} (
+        ts_utc,
+        id,
+        m43_pab_lon_deg,
+        m10_illum_frac,
+        m31_ecl_lon_deg,
+        s31_ecl_lon_deg,
+        phase,
+        phase_hour
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    try {
+      for (const row of validRows) {
+        await statement.executeAsync([
+          row.ts_utc,
+          row.id ?? null,
+          row.m43_pab_lon_deg ?? null,
+          row.m10_illum_frac ?? null,
+          row.m31_ecl_lon_deg ?? null,
+          row.s31_ecl_lon_deg ?? null,
+          row.phase ?? null,
+          row.phase_hour ?? null,
+        ]);
+      }
+    } finally {
+      await statement.finalizeAsync();
+    }
+  });
+}
+
+export async function pruneMsMappingOutsideRange(
+  db: SQLite.SQLiteDatabase,
+  start: string,
+  end: string
+) {
+  await db.runAsync(
+    `DELETE FROM ${MS_MAPPING_TABLE} WHERE ts_utc < ? OR ts_utc > ?`,
+    [start, end]
+  );
 }

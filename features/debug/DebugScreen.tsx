@@ -7,12 +7,13 @@ import { ThemedText } from '@/components/shared/themed-text';
 import { ThemedView } from '@/components/shared/themed-view';
 import { withAlpha } from '@/constants/theme';
 import { useSQLiteDebug } from '@/features/debug/use-sqlite-debug';
-import { syncMoonCanoniqueData } from '@/features/moon/moon.sync';
+import { syncMoonCanoniqueData, syncMoonMsMappingData } from '@/features/moon/moon.sync';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function DebugScreen() {
   const { dbPath, tables, loading, error, refresh, clearTable } = useSQLiteDebug();
   const [clearingTable, setClearingTable] = useState<string | null>(null);
+  const [syncingTable, setSyncingTable] = useState<string | null>(null);
   const [syncingCanonique, setSyncingCanonique] = useState(false);
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
@@ -38,6 +39,23 @@ export default function DebugScreen() {
         },
       ]
     );
+  };
+
+  const handleSyncTable = async (tableName: string) => {
+    if (syncingTable) {
+      return;
+    }
+    setSyncingTable(tableName);
+    try {
+      if (tableName === 'ms_mapping') {
+        await syncMoonMsMappingData();
+      }
+    } catch (err) {
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Sync ms_mapping impossible.');
+    } finally {
+      setSyncingTable(null);
+      refresh();
+    }
   };
 
   const confirmClearTable = async (tableName: string) => {
@@ -111,18 +129,34 @@ export default function DebugScreen() {
               <ThemedText type="title" style={styles.tableTitle}>
                 {table.name}
               </ThemedText>
-              <Pressable
-                onPress={() => handleClearTable(table.name)}
-                disabled={clearingTable === table.name}
-                style={[
-                  styles.clearButton,
-                  { borderColor: action },
-                  clearingTable === table.name && styles.clearButtonDisabled,
-                ]}>
-                <ThemedText type="default" style={[styles.clearButtonText, { color: action }]}>
-                  {clearingTable === table.name ? 'Vider...' : 'Vider'}
-                </ThemedText>
-              </Pressable>
+              <View style={styles.tableActions}>
+                {table.name === 'ms_mapping' ? (
+                  <Pressable
+                    onPress={() => handleSyncTable(table.name)}
+                    disabled={syncingTable === table.name}
+                    style={[
+                      styles.clearButton,
+                      { borderColor: action },
+                      syncingTable === table.name && styles.clearButtonDisabled,
+                    ]}>
+                    <ThemedText type="default" style={[styles.clearButtonText, { color: action }]}>
+                      {syncingTable === table.name ? 'Sync...' : 'Sync'}
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => handleClearTable(table.name)}
+                  disabled={clearingTable === table.name}
+                  style={[
+                    styles.clearButton,
+                    { borderColor: action },
+                    clearingTable === table.name && styles.clearButtonDisabled,
+                  ]}>
+                  <ThemedText type="default" style={[styles.clearButtonText, { color: action }]}>
+                    {clearingTable === table.name ? 'Vider...' : 'Vider'}
+                  </ThemedText>
+                </Pressable>
+              </View>
             </View>
             <ThemedText type="default" style={styles.tableMeta}>
               {table.count} lignes
@@ -201,6 +235,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  tableActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   tableMeta: {
     opacity: 0.7,

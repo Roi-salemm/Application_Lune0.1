@@ -1,7 +1,7 @@
-// Hook home : lit la phase lunaire depuis SQLite et orchestre le formatage pour l'UI.
+// Hook home : lit canonique_data + ms_mapping depuis SQLite et orchestre le formatage pour l'UI.
 // Pourquoi : garder l'ecran simple tout en deleguant les regles de presentation au domain.
-// Rafraichissement : recharge SQLite au montage puis selon un interval parametres (et sur refreshMoonData).
-import { useCallback, useEffect, useState } from 'react';
+// Rafraichissement : recharge SQLite au montage, puis calcule localement l'age en continu.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   formatAgeDaysLabel,
   formatAsOfLabel,
@@ -11,9 +11,11 @@ import {
   formatPercentage,
   formatRemainingDaysLabel,
 } from '@/features/home/domain/moon-formatters';
-import { fetchMoonEphemerisSnapshot } from '@/features/moon/data/moon-ephemeris-data';
-import { fetchNewMoonWindow } from '@/features/moon/data/moon-phase-event-data';
-import { syncMoonCaches } from '@/features/moon/moon.sync';
+import {
+  fetchMsMappingNewMoonWindow,
+  fetchMsMappingSnapshot,
+} from '@/features/moon/data/moon-ms-mapping-data';
+import { fetchCanoniqueDistanceSnapshot } from '@/features/moon/data/moon-canonique-data';
 
 type HomeMoonState = {
   phaseTopLabel?: string;
@@ -36,7 +38,7 @@ type HomeMoonOptions = {
   refreshMs?: number;
 };
 
-export const DEFAULT_HOME_MOON_REFRESH_MS = 30000;
+export const DEFAULT_HOME_MOON_REFRESH_MS = 1000;
 
 export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const refreshMs = options.refreshMs ?? DEFAULT_HOME_MOON_REFRESH_MS;
@@ -49,118 +51,98 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const [cycleEndLabel, setCycleEndLabel] = useState<string | undefined>(undefined);
   const [distanceLabel, setDistanceLabel] = useState<string | undefined>(undefined);
   const [syncing, setSyncing] = useState<boolean>(false);
+  const lastNewMoonRef = useRef<Date | null>(null);
+  const nextNewMoonRef = useRef<Date | null>(null);
+  const illumPctRef = useRef<number | null>(null);
+  const phaseDegRef = useRef<number | null>(null);
+  const loadingRef = useRef(false);
 
-  const applyPhaseData = useCallback(
-    (data: {
-      ageDays?: number | string | null;
-      percentage?: number | string | null;
-      asOf?: Date | null;
-      phaseDeg?: number | string | null;
-      distKm?: number | string | null;
-    }) => {
-      const ageValue = data.ageDays ?? null;
-      const formattedDay = formatLunarDay(ageValue);
-      setPhaseTopLabel(formattedDay?.top);
-      setPhaseBottomLabel(formattedDay?.bottom);
-      setAgeLabel(formatAgeDaysLabel(ageValue));
-      setPercentage(formatPercentage(data.percentage ?? null));
-      const phaseText = formatMoonPhaseLabel({
-        illuminationPct: data.percentage ?? null,
-        phaseDeg: data.phaseDeg ?? null,
-        ageDays: data.ageDays ?? null,
-      });
-      setPhaseLabel(phaseText);
-      setDistanceLabel(formatDistanceKmLabel(data.distKm ?? null));
-      if (data.asOf) {
-        setAsOfDate(data.asOf);
-      }
-    },
-    []
-  );
+  const updateDerivedLabels = useCallback(() => {
+    const now = new Date();
+    const lastNewMoon = lastNewMoonRef.current;
+    const nextNewMoon = nextNewMoonRef.current;
+    const ageDays =
+      lastNewMoon ? Math.max(0, (now.getTime() - lastNewMoon.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
-  const applyCycleWindow = useCallback(
-    (params: { next?: Date | null }) => {
-      const nextDate = params.next ?? null;
-      const remainingDays =
-        nextDate ? Math.max(0, (nextDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-      setCycleEndLabel(formatRemainingDaysLabel(remainingDays));
-    },
-    []
-  );
+    const dayLabel = formatLunarDay(ageDays);
+    setPhaseTopLabel(dayLabel?.top);
+    setPhaseBottomLabel(dayLabel?.bottom);
+    setAgeLabel(formatAgeDaysLabel(ageDays));
 
-  const refreshMoonData = useCallback(async () => {
-    if (syncing) {
+    const phaseText = formatMoonPhaseLabel({
+      illuminationPct: illumPctRef.current,
+      phaseDeg: phaseDegRef.current,
+      ageDays,
+    });
+    setPhaseLabel(phaseText);
+
+    const remainingDays =
+      nextNewMoon ? Math.max(0, (nextNewMoon.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    setCycleEndLabel(formatRemainingDaysLabel(remainingDays));
+  }, []);
+
+  const loadMoonData = useCallback(async () => {
+    if (loadingRef.current) {
       return;
     }
-
+    loadingRef.current = true;
     setSyncing(true);
-
     try {
-      await syncMoonCaches({ force: true });
       const targetDate = new Date();
-      const snapshot = await fetchMoonEphemerisSnapshot(targetDate);
-      if (snapshot) {
-        applyPhaseData({
-          ageDays: snapshot.ageDays,
-          percentage: snapshot.illumPct,
-          phaseDeg: snapshot.phaseDeg,
-          distKm: snapshot.distKm,
-          asOf: snapshot.asOf,
-        });
+      const [msSnapshot, newMoonWindow, canoniqueSnapshot] = await Promise.all([
+        fetchMsMappingSnapshot(targetDate),
+        fetchMsMappingNewMoonWindow(targetDate),
+        fetchCanoniqueDistanceSnapshot(targetDate),
+      ]);
+
+      lastNewMoonRef.current = newMoonWindow.previous;
+      nextNewMoonRef.current = newMoonWindow.next;
+      illumPctRef.current = msSnapshot?.illuminationPct ?? null;
+      phaseDegRef.current = msSnapshot?.phaseDeg ?? null;
+
+      setPercentage(formatPercentage(illumPctRef.current));
+      setDistanceLabel(formatDistanceKmLabel(canoniqueSnapshot?.distKm ?? null));
+      if (msSnapshot?.asOf) {
+        setAsOfDate(msSnapshot.asOf);
+      } else {
+        setAsOfDate(undefined);
       }
-      const newMoonWindow = await fetchNewMoonWindow(snapshot?.asOf ?? targetDate);
-      applyCycleWindow({ next: newMoonWindow.next?.asOf ?? null });
+
+      updateDerivedLabels();
     } catch (error) {
-      console.warn('Failed to refresh moon data', error);
+      console.warn('Failed to load moon data', error);
     } finally {
+      loadingRef.current = false;
       setSyncing(false);
     }
-  }, [applyCycleWindow, applyPhaseData, syncing]);
+  }, [updateDerivedLabels]);
+
+  const refreshMoonData = useCallback(async () => {
+    await loadMoonData();
+  }, [loadMoonData]);
 
   useEffect(() => {
-    let cancelled = false;
+    void loadMoonData();
+  }, [loadMoonData]);
 
-    const loadPhase = async () => {
-      try {
-        const targetDate = new Date();
-        const snapshot = await fetchMoonEphemerisSnapshot(targetDate);
-        if (cancelled) {
-          return;
-        }
-        if (snapshot) {
-          applyPhaseData({
-            ageDays: snapshot.ageDays,
-            percentage: snapshot.illumPct,
-            phaseDeg: snapshot.phaseDeg,
-            distKm: snapshot.distKm,
-            asOf: snapshot.asOf,
-          });
-        }
-        const newMoonWindow = await fetchNewMoonWindow(snapshot?.asOf ?? targetDate);
-        if (!cancelled) {
-          applyCycleWindow({ next: newMoonWindow.next?.asOf ?? null });
-        }
-      } catch (error) {
-        console.warn('Failed to load moon phase', error);
-      }
-    };
-
-    void loadPhase();
+  useEffect(() => {
+    updateDerivedLabels();
     if (refreshMs > 0) {
       const interval = setInterval(() => {
-        void loadPhase();
+        updateDerivedLabels();
+        const nowMs = Date.now();
+        const nextNewMoon = nextNewMoonRef.current;
+        const lastNewMoon = lastNewMoonRef.current;
+        if (!lastNewMoon || (nextNewMoon && nowMs >= nextNewMoon.getTime())) {
+          void loadMoonData();
+        }
       }, refreshMs);
 
       return () => {
-        cancelled = true;
         clearInterval(interval);
       };
     }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyCycleWindow, applyPhaseData, refreshMs]);
+  }, [loadMoonData, refreshMs, updateDerivedLabels]);
 
   const asOfLabel = formatAsOfLabel(asOfDate);
 

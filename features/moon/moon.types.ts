@@ -1,7 +1,6 @@
 export type {
-  MoonPhaseResponse,
-  MoonEphemerisRow,
-  MoonPhaseEventRow,
-  MoonEphemerisResponse,
-  MoonPhaseEventsResponse,
+  MoonCanoniqueRow,
+  MoonCanoniqueResponse,
+  MoonMsMappingRow,
+  MoonMsMappingResponse,
 } from './moon.api';

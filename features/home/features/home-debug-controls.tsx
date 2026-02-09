@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { ThemedText } from '@/components/shared/themed-text';
 import { ThemedView } from '@/components/shared/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { syncMoonCaches } from '@/features/moon/moon.sync';
+import { syncMoonCanoniqueData, syncMoonMsMappingData } from '@/features/moon/moon.sync';
 
 type HomeDebugControlsProps = {
   variant?: 'inline' | 'floating';
@@ -28,7 +28,8 @@ export function HomeDebugControls({ variant = 'inline', style }: HomeDebugContro
     }
     setSyncing(true);
     try {
-      await syncMoonCaches({ force: true });
+      await syncMoonCanoniqueData({ force: true });
+      await syncMoonMsMappingData({ force: true });
     } catch (error) {
       console.warn('Failed to sync SQLite data', error);
     } finally {
