@@ -68,13 +68,17 @@ async function fetchNearestMsMappingRow(targetUtc: string) {
   return row?.ts_utc ? row : null;
 }
 
-async function fetchNewMoonCandidate(targetUtc: string, comparator: '<=' | '>=', order: 'ASC' | 'DESC') {
+async function fetchNewMoonCandidate(
+  targetUtc: string,
+  comparator: '<=' | '>=',
+  order: 'ASC' | 'DESC'
+) {
   const db = await initMoonDb();
   const row = await db.getFirstAsync<MsMappingRow>(
     `SELECT ts_utc, phase_hour
      FROM ms_mapping
-     WHERE phase = 0 AND phase_hour IS NOT NULL AND ts_utc ${comparator} ?
-     ORDER BY ts_utc ${order}
+     WHERE phase = 0 AND phase_hour IS NOT NULL AND phase_hour ${comparator} ?
+     ORDER BY phase_hour ${order}
      LIMIT 1`,
     [targetUtc]
   );
@@ -128,4 +132,73 @@ export async function fetchMsMappingNewMoonWindow(
     previous,
     next,
   };
+}
+
+// Compte le numero de cycle lunaire dans l'annee courante (incluant le cycle actuel).
+// Pourquoi : afficher un indice de lunaison base sur les nouvelles lunes de ms_mapping.
+export async function fetchMsMappingYearCycleIndex(params: {
+  targetDate: Date;
+  currentCycleStart: Date | null;
+}): Promise<number | null> {
+  const { targetDate, currentCycleStart } = params;
+  if (!currentCycleStart) {
+    return null;
+  }
+
+  const yearStartLocal = new Date(targetDate.getFullYear(), 0, 1);
+  if (currentCycleStart.getTime() < yearStartLocal.getTime()) {
+    return 1;
+  }
+
+  const startUtc = formatSqlUtc(yearStartLocal);
+  const endUtc = formatSqlUtc(currentCycleStart);
+  const db = await initMoonDb();
+  const row = await db.getFirstAsync<{ cnt: number }>(
+    `SELECT COUNT(*) AS cnt
+     FROM ms_mapping
+     WHERE phase = 0 AND phase_hour IS NOT NULL AND phase_hour >= ? AND phase_hour <= ?`,
+    [startUtc, endUtc]
+  );
+
+  const count = row?.cnt ?? 0;
+  return count > 0 ? count : 1;
+}
+
+// Trouve la prochaine nouvelle lune en partant du debut du jour local.
+// Pourquoi : eviter d'utiliser l'heure courante pour la recherche, tout en gardant phase_hour comme reference exacte.
+export async function fetchMsMappingNextNewMoonFromDayStart(
+  targetDate: Date
+): Promise<Date | null> {
+  const db = await initMoonDb();
+  const dayStartLocal = new Date(
+    targetDate.getFullYear(),
+    targetDate.getMonth(),
+    targetDate.getDate()
+  );
+  const dayStartUtc = formatSqlUtc(dayStartLocal);
+  const nowUtc = formatSqlUtc(targetDate);
+
+  const fetchNextAfter = async (utc: string) => {
+    const row = await db.getFirstAsync<MsMappingRow>(
+      `SELECT ts_utc, phase_hour
+       FROM ms_mapping
+       WHERE phase = 0 AND phase_hour IS NOT NULL AND phase_hour >= ?
+       ORDER BY phase_hour ASC
+       LIMIT 1`,
+      [utc]
+    );
+
+    return row?.phase_hour ? parseSqlUtc(row.phase_hour) : null;
+  };
+
+  const candidate = await fetchNextAfter(dayStartUtc);
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate.getTime() <= targetDate.getTime()) {
+    return await fetchNextAfter(nowUtc);
+  }
+
+  return candidate;
 }

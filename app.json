@@ -46,6 +46,10 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
+    "assetBundlePatterns": [
+      "assets/images/*",
+      "assets/lunaison_2h_age/*"
+    ],
     "extra": {
       "router": {},
       "eas": {

@@ -2,20 +2,28 @@
 // Pourquoi : garder l'ecran simple tout en deleguant les regles de presentation au domain.
 // Rafraichissement : recharge SQLite au montage, puis calcule localement l'age en continu.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ImageSourcePropType } from 'react-native';
 import {
   formatAgeDaysLabel,
   formatAsOfLabel,
   formatDistanceKmLabel,
-  formatLunarDay,
+  formatLunarCycleLabel,
   formatMoonPhaseLabel,
   formatPercentage,
   formatRemainingDaysLabel,
 } from '@/features/home/domain/moon-formatters';
+import { getMoonImageByAgeDays } from '@/features/home/domain/moon-image-map';
 import {
   fetchMsMappingNewMoonWindow,
   fetchMsMappingSnapshot,
+  fetchMsMappingNextNewMoonFromDayStart,
+  fetchMsMappingYearCycleIndex,
 } from '@/features/moon/data/moon-ms-mapping-data';
-import { fetchCanoniqueDistanceSnapshot } from '@/features/moon/data/moon-canonique-data';
+import {
+  fetchCanoniqueDistanceSnapshot,
+  fetchCanoniqueIlluminationWindow,
+  type CanoniqueIlluminationWindow,
+} from '@/features/moon/data/moon-canonique-data';
 
 type HomeMoonState = {
   phaseTopLabel?: string;
@@ -24,6 +32,7 @@ type HomeMoonState = {
   asOfLabel?: string;
   phaseLabel?: string;
   ageLabel?: string;
+  moonImageSource?: ImageSourcePropType;
   cycleEndLabel?: string;
   distanceLabel?: string;
   visibleInLabel?: string;
@@ -48,6 +57,7 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const [asOfDate, setAsOfDate] = useState<Date | undefined>(undefined);
   const [phaseLabel, setPhaseLabel] = useState<string | undefined>(undefined);
   const [ageLabel, setAgeLabel] = useState<string | undefined>(undefined);
+  const [moonImageSource, setMoonImageSource] = useState<ImageSourcePropType | undefined>(undefined);
   const [cycleEndLabel, setCycleEndLabel] = useState<string | undefined>(undefined);
   const [distanceLabel, setDistanceLabel] = useState<string | undefined>(undefined);
   const [syncing, setSyncing] = useState<boolean>(false);
@@ -55,7 +65,82 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const nextNewMoonRef = useRef<Date | null>(null);
   const illumPctRef = useRef<number | null>(null);
   const phaseDegRef = useRef<number | null>(null);
+  const cycleIndexRef = useRef<number | null>(null);
+  const illumWindowRef = useRef<CanoniqueIlluminationWindow | null>(null);
+  const illumLoadingRef = useRef(false);
   const loadingRef = useRef(false);
+
+  const normalizeIllumination = (value: number | null) => {
+    if (value === null || !Number.isFinite(value)) {
+      return null;
+    }
+    return value <= 1 ? value * 100 : value;
+  };
+
+  const computeIlluminationPct = (
+    now: Date,
+    window: CanoniqueIlluminationWindow | null
+  ): number | null => {
+    const previous = window?.previous ?? null;
+    const next = window?.next ?? null;
+    const prevValue = normalizeIllumination(previous?.illumFrac ?? null);
+    const nextValue = normalizeIllumination(next?.illumFrac ?? null);
+
+    if (prevValue === null && nextValue === null) {
+      return null;
+    }
+    if (!previous || prevValue === null) {
+      return nextValue;
+    }
+    if (!next || nextValue === null) {
+      return prevValue;
+    }
+
+    const spanMs = next.asOf.getTime() - previous.asOf.getTime();
+    if (!Number.isFinite(spanMs) || spanMs <= 0) {
+      return prevValue;
+    }
+
+    const tRaw = (now.getTime() - previous.asOf.getTime()) / spanMs;
+    const t = Math.max(0, Math.min(1, tRaw));
+    return prevValue + (nextValue - prevValue) * t;
+  };
+
+  const loadIlluminationWindow = useCallback(async (targetDate: Date) => {
+    if (illumLoadingRef.current) {
+      return;
+    }
+    illumLoadingRef.current = true;
+    try {
+      const window = await fetchCanoniqueIlluminationWindow(targetDate);
+      illumWindowRef.current = window;
+    } catch (error) {
+      console.warn('Failed to load canonique illumination window', error);
+    } finally {
+      illumLoadingRef.current = false;
+    }
+  }, []);
+
+  const updateIllumination = useCallback(async () => {
+    const now = new Date();
+    let window = illumWindowRef.current;
+    const previous = window?.previous ?? null;
+    const next = window?.next ?? null;
+    const needsRefresh =
+      !previous ||
+      !next ||
+      now.getTime() < previous.asOf.getTime() ||
+      now.getTime() > next.asOf.getTime();
+
+    if (needsRefresh) {
+      await loadIlluminationWindow(now);
+      window = illumWindowRef.current;
+    }
+
+    const illumPct = computeIlluminationPct(now, window);
+    illumPctRef.current = illumPct;
+    setPercentage(formatPercentage(illumPct));
+  }, [loadIlluminationWindow]);
 
   const updateDerivedLabels = useCallback(() => {
     const now = new Date();
@@ -64,10 +149,11 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     const ageDays =
       lastNewMoon ? Math.max(0, (now.getTime() - lastNewMoon.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
-    const dayLabel = formatLunarDay(ageDays);
-    setPhaseTopLabel(dayLabel?.top);
-    setPhaseBottomLabel(dayLabel?.bottom);
+    const cycleIndexLabel = formatLunarCycleLabel(cycleIndexRef.current);
+    setPhaseTopLabel(cycleIndexLabel?.top);
+    setPhaseBottomLabel(cycleIndexLabel?.bottom);
     setAgeLabel(formatAgeDaysLabel(ageDays));
+    setMoonImageSource(getMoonImageByAgeDays(ageDays) ?? undefined);
 
     const phaseText = formatMoonPhaseLabel({
       illuminationPct: illumPctRef.current,
@@ -78,7 +164,12 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
 
     const remainingDays =
       nextNewMoon ? Math.max(0, (nextNewMoon.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-    setCycleEndLabel(formatRemainingDaysLabel(remainingDays));
+    const cycleEndLabel = remainingDays !== null && remainingDays <= 30
+      ? formatRemainingDaysLabel(remainingDays)
+      : undefined;
+    setCycleEndLabel(cycleEndLabel);
+
+    setAsOfDate(now);
   }, []);
 
   const loadMoonData = useCallback(async () => {
@@ -89,24 +180,29 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     setSyncing(true);
     try {
       const targetDate = new Date();
-      const [msSnapshot, newMoonWindow, canoniqueSnapshot] = await Promise.all([
-        fetchMsMappingSnapshot(targetDate),
-        fetchMsMappingNewMoonWindow(targetDate),
-        fetchCanoniqueDistanceSnapshot(targetDate),
-      ]);
+    const [msSnapshot, newMoonWindow, nextNewMoon, canoniqueSnapshot, illumWindow] = await Promise.all([
+      fetchMsMappingSnapshot(targetDate),
+      fetchMsMappingNewMoonWindow(targetDate),
+      fetchMsMappingNextNewMoonFromDayStart(targetDate),
+      fetchCanoniqueDistanceSnapshot(targetDate),
+      fetchCanoniqueIlluminationWindow(targetDate),
+    ]);
 
       lastNewMoonRef.current = newMoonWindow.previous;
-      nextNewMoonRef.current = newMoonWindow.next;
+      nextNewMoonRef.current = nextNewMoon;
+      cycleIndexRef.current = await fetchMsMappingYearCycleIndex({
+        targetDate,
+        currentCycleStart: newMoonWindow.previous,
+      });
       illumPctRef.current = msSnapshot?.illuminationPct ?? null;
       phaseDegRef.current = msSnapshot?.phaseDeg ?? null;
 
-      setPercentage(formatPercentage(illumPctRef.current));
+      illumWindowRef.current = illumWindow;
+      const illumPct = computeIlluminationPct(targetDate, illumWindow);
+      illumPctRef.current = illumPct;
+      setPercentage(formatPercentage(illumPct));
       setDistanceLabel(formatDistanceKmLabel(canoniqueSnapshot?.distKm ?? null));
-      if (msSnapshot?.asOf) {
-        setAsOfDate(msSnapshot.asOf);
-      } else {
-        setAsOfDate(undefined);
-      }
+      setAsOfDate(new Date());
 
       updateDerivedLabels();
     } catch (error) {
@@ -124,6 +220,17 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   useEffect(() => {
     void loadMoonData();
   }, [loadMoonData]);
+
+  useEffect(() => {
+    void updateIllumination();
+    const interval = setInterval(() => {
+      void updateIllumination();
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [updateIllumination]);
 
   useEffect(() => {
     updateDerivedLabels();
@@ -153,6 +260,7 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     asOfLabel,
     phaseLabel,
     ageLabel,
+    moonImageSource,
     cycleEndLabel,
     distanceLabel,
     visibleInLabel: undefined,

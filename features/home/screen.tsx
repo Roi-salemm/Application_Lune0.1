@@ -20,6 +20,7 @@ export default function HomeScreen() {
     asOfLabel,
     phaseLabel,
     ageLabel,
+    moonImageSource,
     cycleEndLabel,
     distanceLabel,
     visibleInLabel,
@@ -38,6 +39,7 @@ export default function HomeScreen() {
           leftTopLabel={phaseTopLabel}
           leftBottomLabel={phaseBottomLabel}
           rightTopLabel={percentage}
+          moonImageSource={moonImageSource}
         />
       </View>
       <View style={styles.details}>
@@ -61,6 +63,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000',
   },
   hero: {
     paddingHorizontal: 24,

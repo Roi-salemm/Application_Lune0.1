@@ -2,7 +2,15 @@
 // Pourquoi : encapsuler la mise en page (positions absolues) pour ajuster le rendu sans toucher l'ecran.
 // Info : les pastilles sont en absolu autour du cercle pour coller au visuel.
 
-import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 
 import { ThemedText } from '@/components/shared/themed-text';
 import { withAlpha } from '@/constants/theme';
@@ -10,6 +18,8 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 
 const MOON_SIZE = 180;
 const PILL_HEIGHT = 46;
+const PILL_OFFSET_X = 12;
+const FADE_DURATION_MS = 700;
 
 type MoonPhaseHeaderProps = {
   title?: string;
@@ -18,6 +28,7 @@ type MoonPhaseHeaderProps = {
   leftBottomLabel?: string;
   rightTopLabel?: string;
   rightBottomLabel?: string;
+  moonImageSource?: ImageSourcePropType;
 };
 
 type MoonPhasePillProps = {
@@ -36,6 +47,7 @@ export function MoonPhaseHeader({
   leftBottomLabel,
   rightTopLabel,
   rightBottomLabel = 'illuminer',
+  moonImageSource,
 }: MoonPhaseHeaderProps) {
   const subtitleText = subtitle ?? '...';
   const surface = useThemeColor({}, 'surface');
@@ -57,7 +69,7 @@ export function MoonPhaseHeader({
         </ThemedText>
       </View>
       <View style={styles.moonCluster}>
-        <View style={[styles.moon, { backgroundColor: moonColor }]} />
+        <MoonPhaseImage source={moonImageSource} fallbackColor={moonColor} />
         <MoonPhasePill
           topLabel={leftTopLabel}
           bottomLabel={leftBottomLabel}
@@ -75,6 +87,52 @@ export function MoonPhaseHeader({
           strongColor={pillStrong}
         />
       </View>
+    </View>
+  );
+}
+
+type MoonPhaseImageProps = {
+  source?: ImageSourcePropType;
+  fallbackColor: string;
+};
+
+function MoonPhaseImage({ source, fallbackColor }: MoonPhaseImageProps) {
+  const [currentSource, setCurrentSource] = useState<ImageSourcePropType | null>(
+    source ?? null
+  );
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!source) {
+      setCurrentSource(null);
+      opacity.setValue(1);
+      return;
+    }
+
+    if (source === currentSource) {
+      return;
+    }
+
+    opacity.setValue(0);
+    setCurrentSource(source);
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: FADE_DURATION_MS,
+      useNativeDriver: true,
+    }).start();
+  }, [currentSource, opacity, source]);
+
+  const backgroundColor = currentSource ? 'transparent' : fallbackColor;
+
+  return (
+    <View style={[styles.moon, { backgroundColor }]}>
+      {currentSource ? (
+        <Animated.Image
+          source={currentSource}
+          style={[styles.moonImage, { opacity }]}
+          resizeMode="cover"
+        />
+      ) : null}
     </View>
   );
 }
@@ -127,18 +185,23 @@ const styles = StyleSheet.create({
     width: MOON_SIZE,
     height: MOON_SIZE,
     borderRadius: MOON_SIZE / 2,
+    overflow: 'hidden',
+  },
+  moonImage: {
+    width: '100%',
+    height: '100%',
   },
   leftPill: {
     position: 'absolute',
     left: 0,
     top: '50%',
-    transform: [{ translateY: -PILL_HEIGHT / 2 }],
+    transform: [{ translateX: -PILL_OFFSET_X }, { translateY: -PILL_HEIGHT / 2 }],
   },
   rightPill: {
     position: 'absolute',
     right: 0,
     top: '50%',
-    transform: [{ translateY: -PILL_HEIGHT / 2 }],
+    transform: [{ translateX: PILL_OFFSET_X }, { translateY: -PILL_HEIGHT / 2 }],
   },
   pill: {
     minWidth: 84,

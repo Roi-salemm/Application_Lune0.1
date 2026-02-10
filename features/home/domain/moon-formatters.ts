@@ -5,8 +5,8 @@
 import { formatDisplay, formatTimeValue } from '@/features/calendar/domain/CalendarDateUtils';
 import { MONTHS, WEEKDAY_LONG } from '@/features/calendar/ui/CalendarConstants';
 
-// Transforme l'age lunaire (jours) en libelle "X eme / Lune" pour la pastille gauche.
-export function formatLunarDay(value: number | string | null | undefined) {
+// Transforme le numero de cycle lunaire en libelle "X eme / Lune" pour la pastille gauche.
+export function formatLunarCycleLabel(value: number | string | null | undefined) {
   if (value === null || value === undefined) {
     return undefined;
   }
@@ -17,13 +17,14 @@ export function formatLunarDay(value: number | string | null | undefined) {
   }
 
   const dayNumber = Math.max(0, Math.round(numeric));
+  const suffix = dayNumber === 1 ? 'er' : dayNumber === 2 ? 'nd' : 'eme';
   return {
-    top: `${dayNumber} eme`,
+    top: `${dayNumber} ${suffix}`,
     bottom: 'Lune',
   };
 }
 
-// Formate le pourcentage d'illumination en texte court (ex: "73%" ou "73.5%").
+// Formate le pourcentage d'illumination en texte court (ex: "73,00%").
 export function formatPercentage(value: number | string | undefined | null) {
   if (value === null || value === undefined) {
     return undefined;
@@ -34,9 +35,8 @@ export function formatPercentage(value: number | string | undefined | null) {
     return undefined;
   }
 
-  const fixed = numeric.toFixed(1);
-  const trimmed = fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed;
-  return `${trimmed}%`;
+  const fixed = numeric.toFixed(2).replace('.', ',');
+  return `${fixed}%`;
 }
 
 // Construit le libelle de date sans l'heure (ex: "Mercredi 14 Janvier").
@@ -56,7 +56,7 @@ export function formatAsOfLabel(date: Date | null | undefined) {
   return `${weekday} ${day} ${month}`;
 }
 
-// Formate l'age de la lunaison en jours (ex: "18,2j").
+// Formate l'age de la lunaison en jours/heures/minutes (ex: "18j 4h 48m").
 export function formatAgeDaysLabel(value: number | string | null | undefined) {
   if (value === null || value === undefined) {
     return undefined;
@@ -65,8 +65,18 @@ export function formatAgeDaysLabel(value: number | string | null | undefined) {
   if (!Number.isFinite(numeric)) {
     return undefined;
   }
-  const fixed = numeric.toFixed(1).replace('.', ',');
-  return `${fixed}j`;
+  const clamped = Math.max(0, numeric);
+  let days = Math.floor(clamped);
+  let totalMinutes = Math.round((clamped - days) * 24 * 60);
+
+  if (totalMinutes >= 24 * 60) {
+    days += 1;
+    totalMinutes = 0;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${days}j ${hours}h ${minutes}m`;
 }
 
 // Calcule l'age de la lunaison (jours) a partir de axis_a_deg et des nouvelles lunes encadrantes.
@@ -124,7 +134,7 @@ export function formatNextNewMoonDateLabel(date: Date | null | undefined) {
   return `${formatDisplay(date)} ${hours}h${minutes}`;
 }
 
-// Formate un delai (en jours) avant le prochain cycle (ex: "7,55j").
+// Formate un delai (en jours) avant le prochain cycle (ex: "7j 13h 12m").
 export function formatRemainingDaysLabel(value: number | null | undefined) {
   if (value === null || value === undefined) {
     return undefined;
@@ -132,8 +142,18 @@ export function formatRemainingDaysLabel(value: number | null | undefined) {
   if (!Number.isFinite(value)) {
     return undefined;
   }
-  const fixed = value.toFixed(2).replace('.', ',');
-  return `${fixed}j`;
+  const clamped = Math.max(0, value);
+  let days = Math.floor(clamped);
+  let totalMinutes = Math.round((clamped - days) * 24 * 60);
+
+  if (totalMinutes >= 24 * 60) {
+    days += 1;
+    totalMinutes = 0;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${days}j ${hours}h ${minutes}m`;
 }
 
 // Determine la phase lunaire en texte parmi les 8 libelles attendus.
