@@ -1,8 +1,9 @@
 // Texte thematise avec variantes de styles typographiques.
 // Pourquoi : centraliser les couleurs et la typographie pour garder un rendu coherent.
-import { StyleSheet, Text, type TextProps } from 'react-native';
+import { Text, type TextProps, type TextStyle } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { TYPO, type TypoVariant } from '@/constants/typography';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 export type ThemedTextProps = TextProps & {
@@ -10,6 +11,15 @@ export type ThemedTextProps = TextProps & {
   darkColor?: string;
   colorName?: keyof typeof Colors.light & keyof typeof Colors.dark;
   type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
+  variant?: TypoVariant;
+};
+
+const TYPE_STYLE: Record<NonNullable<ThemedTextProps['type']>, TextStyle> = {
+  default: TYPO.texte,
+  defaultSemiBold: { ...TYPO.texte, fontWeight: '600' },
+  title: TYPO.title,
+  subtitle: { ...TYPO.baseline, fontWeight: '600' },
+  link: { ...TYPO.texte, textDecorationLine: 'underline' },
 };
 
 export function ThemedText({
@@ -18,6 +28,7 @@ export function ThemedText({
   darkColor,
   colorName = 'text',
   type = 'default',
+  variant,
   ...rest
 }: ThemedTextProps) {
   const color = useThemeColor({ light: lightColor, dark: darkColor }, colorName);
@@ -26,39 +37,11 @@ export function ThemedText({
     <Text
       style={[
         { color },
-        type === 'default' ? styles.default : undefined,
-        type === 'title' ? styles.title : undefined,
-        type === 'defaultSemiBold' ? styles.defaultSemiBold : undefined,
-        type === 'subtitle' ? styles.subtitle : undefined,
-        type === 'link' ? styles.link : undefined,
         style,
+        TYPE_STYLE[type],
+        variant ? TYPO[variant] : undefined,
       ]}
       {...rest}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  defaultSemiBold: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 32,
-  },
-  subtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: 16,
-  },
-});

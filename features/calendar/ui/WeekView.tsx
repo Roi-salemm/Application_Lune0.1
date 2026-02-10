@@ -10,10 +10,21 @@ type WeekViewProps = {
   baseDate: Date;
   selectedDate: Date | null;
   notes: Record<string, NoteItem[]>;
+  phaseDayKeys: Set<string>;
+  phaseTimesByDay: Map<string, string>;
+  phaseByDay: Map<string, number>;
   onSelectDate: (date: Date) => void;
 };
 
-export function WeekView({ baseDate, selectedDate, notes, onSelectDate }: WeekViewProps) {
+export function WeekView({
+  baseDate,
+  selectedDate,
+  notes,
+  phaseDayKeys,
+  phaseTimesByDay,
+  phaseByDay,
+  onSelectDate,
+}: WeekViewProps) {
   const weekStart = getWeekStart(baseDate);
   const days = Array.from({ length: 7 }, (_, index) => {
     const d = new Date(weekStart);
@@ -28,12 +39,18 @@ export function WeekView({ baseDate, selectedDate, notes, onSelectDate }: WeekVi
           const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
           const dateKey = formatKey(date);
           const noteColor = notes[dateKey]?.length ? notes[dateKey][0].color : null;
+          const showMoon = phaseDayKeys.has(dateKey);
+          const phaseTimeLabel = phaseTimesByDay.get(dateKey) ?? null;
+          const phaseValue = phaseByDay.get(dateKey) ?? null;
           return (
             <DayCell
               key={`week-${index}`}
               date={date}
               isSelected={isSelected}
               noteColor={noteColor}
+              showMoon={showMoon}
+              phaseTimeLabel={phaseTimeLabel}
+              phaseValue={phaseValue}
               onSelectDate={onSelectDate}
             />
           );

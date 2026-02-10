@@ -11,6 +11,7 @@ import { NoteFormModal } from '@/features/calendar/ui/NoteFormModal';
 import { WeekView } from '@/features/calendar/ui/WeekView';
 import { COLORS, MONTHS, WEEKDAYS } from '@/features/calendar/ui/CalendarConstants';
 import { useCalendarNavigation } from '@/features/calendar/state/UseCalendarNavigation';
+import { useCalendarMoonPhases } from '@/features/calendar/state/use-calendar-moon-phases';
 import { useCalendarNotes } from '@/features/calendar/state/UseCalendarNotes';
 import { isSameDay, parseDateKey } from '@/features/calendar/domain/CalendarDateUtils';
 import { NoteItem } from '@/features/calendar/types/CalendarTypes';
@@ -62,6 +63,12 @@ export default function CalendarScreen() {
     visibleMonthIndex,
     onListLayout,
   } = useCalendarNavigation(today);
+
+  const { phaseDayKeys, phaseTimesByDay, phaseByDay } = useCalendarMoonPhases({
+    months,
+    visibleMonthIndex,
+    today,
+  });
 
   const visibleMonth = months[visibleMonthIndex] ?? { year: today.getFullYear(), month: today.getMonth() };
   const headerLabel = `${MONTHS[visibleMonth.month]} ${visibleMonth.year}`;
@@ -259,6 +266,9 @@ export default function CalendarScreen() {
           listRef={listRef}
           selectedDate={selectedDate}
           notes={notes}
+          phaseDayKeys={phaseDayKeys}
+          phaseTimesByDay={phaseTimesByDay}
+          phaseByDay={phaseByDay}
           onSelectDate={handleSelectDate}
           visibleMonthIndex={visibleMonthIndex}
           onViewableItemsChanged={onViewableItemsChanged}
@@ -274,6 +284,9 @@ export default function CalendarScreen() {
                 baseDate={selectedDate ?? today}
                 selectedDate={selectedDate}
                 notes={notes}
+                phaseDayKeys={phaseDayKeys}
+                phaseTimesByDay={phaseTimesByDay}
+                phaseByDay={phaseByDay}
                 onSelectDate={handleSelectDate}
               />
             </View>

@@ -1,12 +1,17 @@
 // Cellule jour du calendrier (ou placeholder).
 // Pourquoi : isoler le rendu d'un jour et limiter les rerenders via memo.
 import React, { memo, useCallback } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ThemedText } from '@/components/shared/themed-text';
 import { withAlpha } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import Phase0 from '../../../assets/graphisme/p0_nouvelle_lune.svg';
+import Phase2 from '../../../assets/graphisme/p2_permier_quard.svg';
+import Phase4 from '../../../assets/graphisme/p4_pleine_lune.svg';
+import Phase6 from '../../../assets/graphisme/p6_dernier_quard.svg';
 
 type DayCellProps = {
   date: Date | null;
@@ -14,11 +19,67 @@ type DayCellProps = {
   noteColor?: string | null;
   onSelectDate?: (date: Date) => void;
   hidden?: boolean;
+  showMoon?: boolean;
+  phaseTimeLabel?: string | null;
+  phaseValue?: number | null;
 };
 
-function DayCellComponent({ date, isSelected, noteColor, onSelectDate, hidden }: DayCellProps) {
+type SvgResolved = {
+  Component?: React.ComponentType<{ width?: number; height?: number }>;
+  source?: ImageSourcePropType;
+};
+
+function resolveSvgAsset(asset: unknown): SvgResolved {
+  if (!asset) {
+    return {};
+  }
+
+  if (typeof asset === 'function') {
+    return { Component: asset as React.ComponentType<{ width?: number; height?: number }> };
+  }
+
+  if (typeof asset === 'string') {
+    return { source: { uri: asset } };
+  }
+
+  if (typeof asset === 'object') {
+    const maybeAsset = asset as {
+      default?: unknown;
+      uri?: unknown;
+    };
+    if (typeof maybeAsset.default === 'function') {
+      return { Component: maybeAsset.default as React.ComponentType<{ width?: number; height?: number }> };
+    }
+    if (typeof maybeAsset.default === 'string') {
+      return { source: { uri: maybeAsset.default } };
+    }
+    if (typeof maybeAsset.uri === 'string') {
+      return { source: { uri: maybeAsset.uri } };
+    }
+    if (typeof maybeAsset.default === 'number') {
+      return { source: maybeAsset.default as ImageSourcePropType };
+    }
+    if (typeof maybeAsset.default === 'object') {
+      return { source: maybeAsset.default as ImageSourcePropType };
+    }
+  }
+
+  return {};
+}
+
+function DayCellComponent({
+  date,
+  isSelected,
+  noteColor,
+  onSelectDate,
+  hidden,
+  showMoon,
+  phaseTimeLabel,
+  phaseValue,
+}: DayCellProps) {
   const showMediaRow = Boolean(noteColor);
   const isHidden = hidden || !date;
+  const showMoonInfo = Boolean(date && showMoon);
   const unselectedBorder = useThemeColor({}, 'unselected-border');
   const action = useThemeColor({}, 'btn-action');
   const annex = useThemeColor({}, 'annex');
@@ -32,6 +93,39 @@ function DayCellComponent({ date, isSelected, noteColor, onSelectDate, hidden }:
       onSelectDate(date);
     }
   }, [date, onSelectDate]);
+
+  const renderPhaseIcon = () => {
+    const size = 33;
+    const renderSvg = (asset: unknown) => {
+      const resolved = resolveSvgAsset(asset);
+      if (resolved.Component) {
+        const Component = resolved.Component;
+        return <Component width={size} height={size} />;
+      }
+      if (resolved.source && Platform.OS === 'web') {
+        return (
+          <Image
+            source={resolved.source}
+            style={{ width: size, height: size }}
+            resizeMode="contain"
+          />
+        );
+      }
+      return null;
+    };
+    switch (phaseValue) {
+      case 0:
+        return renderSvg(Phase0);
+      case 2:
+        return renderSvg(Phase2);
+      case 4:
+        return renderSvg(Phase4);
+      case 6:
+        return renderSvg(Phase6);
+      default:
+        return null;
+    }
+  };
 
   return (
     <View style={[styles.dayCellWrap, isHidden && styles.dayCellHidden]}>
@@ -48,21 +142,25 @@ function DayCellComponent({ date, isSelected, noteColor, onSelectDate, hidden }:
         {date ? (
           <>
             <View style={styles.headerRow}>
-              <ThemedText type="default" style={styles.dayNumber} colorName="text">
+              <ThemedText variant="calendarDay" style={styles.dayNumber} colorName="text">
                 {date.getDate()}
               </ThemedText>
             </View>
-            <View style={styles.moonContainer}>
-              <IconSymbol name="moon.fill" size={33} color={moonIcon} />
-            </View>
-            <View style={styles.metaBlock}>
-              <ThemedText type="default" style={styles.percentText} colorName="annex">
-                0%
-              </ThemedText>
-              <ThemedText type="default" style={styles.timeText} colorName="annex">
-                20h44
-              </ThemedText>
-            </View>
+            {showMoonInfo ? (
+              <>
+                <View style={styles.moonContainer}>
+                  {renderPhaseIcon()}
+                </View>
+                <View style={styles.metaBlock}>
+                  <ThemedText variant="calendarInfo" style={styles.percentText} colorName="annex">
+                    0%
+                  </ThemedText>
+                  <ThemedText variant="calendarInfoTight" style={styles.timeText} colorName="annex">
+                    {phaseTimeLabel ?? '--'}
+                  </ThemedText>
+                </View>
+              </>
+            ) : null}
             {showMediaRow ? (
               <View style={styles.mediaRow}>
                 <View style={[styles.mediaDot, { backgroundColor: mediaDot }]} />
@@ -125,7 +223,6 @@ const styles = StyleSheet.create({
   },
   dayNumber: {
     alignSelf: 'center',
-    fontSize: 12,
   },
   moonContainer: {
     marginTop: 0,
@@ -136,12 +233,8 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   percentText: {
-    fontSize: 10,
-    lineHeight: 15,
   },
   timeText: {
-    fontSize: 10,
-    lineHeight: 12,
   },
   mediaRow: {
     flexDirection: 'row',

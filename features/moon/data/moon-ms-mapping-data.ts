@@ -24,6 +24,11 @@ export type MsMappingNewMoonWindow = {
   next: Date | null;
 };
 
+export type MsMappingPhaseHour = {
+  phase: number;
+  date: Date;
+};
+
 function normalizePhaseDeg(moonLon: number | null, sunLon: number | null) {
   if (moonLon === null || sunLon === null) {
     return null;
@@ -132,6 +137,44 @@ export async function fetchMsMappingNewMoonWindow(
     previous,
     next,
   };
+}
+
+// Recupere les dates de phases (phase_hour) dans une plage donnee.
+// Pourquoi : afficher les jours de phases dans le calendrier sans charger toute la table.
+export async function fetchMsMappingPhaseHoursInRange(params: {
+  start: Date;
+  end: Date;
+}): Promise<MsMappingPhaseHour[]> {
+  const startUtc = formatSqlUtc(params.start);
+  const endUtc = formatSqlUtc(params.end);
+  const db = await initMoonDb();
+  const rows = await db.getAllAsync<MsMappingRow>(
+    `SELECT phase, phase_hour
+     FROM ms_mapping
+     WHERE phase_hour IS NOT NULL
+       AND phase >= 0 AND phase <= 7
+       AND phase_hour >= ? AND phase_hour <= ?
+     ORDER BY phase_hour ASC`,
+    [startUtc, endUtc]
+  );
+
+  if (!rows?.length) {
+    return [];
+  }
+
+  const results: MsMappingPhaseHour[] = [];
+  for (const row of rows) {
+    const phaseNumeric = typeof row.phase === 'string' ? Number(row.phase) : row.phase;
+    if (!Number.isFinite(phaseNumeric)) {
+      continue;
+    }
+    const date = row.phase_hour ? parseSqlUtc(row.phase_hour) : null;
+    if (!date) {
+      continue;
+    }
+    results.push({ phase: phaseNumeric as number, date });
+  }
+  return results;
 }
 
 // Compte le numero de cycle lunaire dans l'annee courante (incluant le cycle actuel).

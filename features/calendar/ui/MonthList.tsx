@@ -12,6 +12,9 @@ type MonthListProps = {
   listRef: React.RefObject<FlatList<{ year: number; month: number }>> | React.MutableRefObject<FlatList<{ year: number; month: number }> | null>;
   selectedDate: Date | null;
   notes: Record<string, NoteItem[]>;
+  phaseDayKeys: Set<string>;
+  phaseTimesByDay: Map<string, string>;
+  phaseByDay: Map<string, number>;
   onSelectDate: (date: Date) => void;
   visibleMonthIndex: number;
   onViewableItemsChanged: (info: { viewableItems: Array<{ index: number | null }> }) => void;
@@ -26,6 +29,9 @@ export function MonthList({
   listRef,
   selectedDate,
   notes,
+  phaseDayKeys,
+  phaseTimesByDay,
+  phaseByDay,
   onSelectDate,
   visibleMonthIndex,
   onViewableItemsChanged,
@@ -65,12 +71,18 @@ export function MonthList({
     const isSelected = date && selectedDate ? isSameDay(date, selectedDate) : false;
     const dateKey = date ? formatKey(date) : '';
     const noteColor = dateKey && notes[dateKey]?.length ? notes[dateKey][0].color : null;
+    const showMoon = dateKey ? phaseDayKeys.has(dateKey) : false;
+    const phaseTimeLabel = dateKey ? phaseTimesByDay.get(dateKey) ?? null : null;
+    const phaseValue = dateKey ? phaseByDay.get(dateKey) ?? null : null;
     return (
       <DayCell
         key={`${monthKey}-${index}`}
         date={date}
         isSelected={isSelected}
         noteColor={noteColor}
+        showMoon={showMoon}
+        phaseTimeLabel={phaseTimeLabel}
+        phaseValue={phaseValue}
         hidden={!date}
         onSelectDate={onSelectDate}
       />

@@ -48,7 +48,7 @@ const MonthCard = memo(function MonthCard({ year, monthIndex, onPick, onLayout }
         ))}
         {days.map((day) => (
           <View key={day} style={styles.dayDot}>
-            <ThemedText type="default" style={styles.dayText} colorName="annex">
+            <ThemedText variant="calendarInfo" style={styles.dayText} colorName="annex">
               {day}
             </ThemedText>
           </View>
@@ -413,6 +413,5 @@ const styles = StyleSheet.create({
   dayDotEmpty: {
   },
   dayText: {
-    fontSize: 10,
   },
 });
