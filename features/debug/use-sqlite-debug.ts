@@ -24,6 +24,10 @@ function sanitizeIdentifier(value: string) {
   return value.replace(/"/g, '""');
 }
 
+function shouldHideColumn(columnName: string) {
+  return /created_at/i.test(columnName);
+}
+
 export function useSQLiteDebug(): SQLiteDebugState {
   const [tables, setTables] = useState<SQLiteTableDump[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -60,16 +64,24 @@ export function useSQLiteDebug(): SQLiteDebugState {
           const safeName = sanitizeIdentifier(table.name);
           const info = await db.getAllAsync<{ name: string }>(`PRAGMA table_info("${safeName}")`);
           const columns = info.map((col) => col.name);
+          const visibleColumns = columns.filter((column) => !shouldHideColumn(column));
           const countRow = await db.getFirstAsync<{ cnt: number }>(
             `SELECT COUNT(*) AS cnt FROM "${safeName}"`
           );
-          const rows = await db.getAllAsync<Record<string, unknown>>(
+          const rawRows = await db.getAllAsync<Record<string, unknown>>(
             `SELECT * FROM "${safeName}" LIMIT 20`
           );
+          const rows = rawRows.map((row) => {
+            const nextRow: Record<string, unknown> = {};
+            for (const column of visibleColumns) {
+              nextRow[column] = row[column];
+            }
+            return nextRow;
+          });
 
           nextTables.push({
             name: table.name,
-            columns,
+            columns: visibleColumns,
             rows,
             count: countRow?.cnt ?? 0,
           });

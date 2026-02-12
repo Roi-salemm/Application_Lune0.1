@@ -1,12 +1,14 @@
 // Ecran debug SQLite avec liste des tables et rafraichissement.
 // Pourquoi : diagnostiquer rapidement l'etat de la base embarquee.
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ThemedText } from '@/components/shared/themed-text';
 import { ThemedView } from '@/components/shared/themed-view';
 import { withAlpha } from '@/constants/theme';
 import { useSQLiteDebug } from '@/features/debug/use-sqlite-debug';
+import type { MoonCard1Tropical } from '@/features/home/ui/moon-card-1-tropical';
+import { buildMoonCard1Tropical } from '@/features/moon/domain/moon-tropical';
 import { syncMoonCanoniqueData, syncMoonMsMappingData } from '@/features/moon/moon.sync';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -15,6 +17,9 @@ export default function DebugScreen() {
   const [clearingTable, setClearingTable] = useState<string | null>(null);
   const [syncingTable, setSyncingTable] = useState<string | null>(null);
   const [syncingCanonique, setSyncingCanonique] = useState(false);
+  const [moonCard, setMoonCard] = useState<MoonCard1Tropical | null>(null);
+  const [moonCardError, setMoonCardError] = useState<string | null>(null);
+  const [moonCardLoading, setMoonCardLoading] = useState<boolean>(false);
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
   const text = useThemeColor({}, 'text');
@@ -23,6 +28,74 @@ export default function DebugScreen() {
   const refreshButtonBorder = withAlpha(border, 0.6);
   const tableCardBg = withAlpha(surface, 0.55);
   const tableHeaderBg = withAlpha(border, 0.2);
+  const moonCardBg = withAlpha(surface, 0.7);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMoonCard = async () => {
+      setMoonCardLoading(true);
+      setMoonCardError(null);
+      try {
+        const card = await buildMoonCard1Tropical(new Date());
+        if (!cancelled) {
+          setMoonCard(card);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMoonCardError(err instanceof Error ? err.message : 'Erreur inconnue');
+        }
+      } finally {
+        if (!cancelled) {
+          setMoonCardLoading(false);
+        }
+      }
+    };
+
+    void loadMoonCard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tables]);
+
+  const formatMoonCardValue = (value: unknown) => {
+    if (value === null || value === undefined) {
+      return '...';
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : '...';
+    }
+    if (typeof value === 'string') {
+      return value.trim().length ? value : '...';
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false';
+    }
+    return String(value);
+  };
+
+  const moonCardEntries = moonCard
+    ? [
+        { key: 'ts_utc', value: moonCard.ts_utc },
+        { key: 'phase_key', value: moonCard.phase_key },
+        { key: 'phase_change_ts_utc', value: moonCard.phase_change_ts_utc },
+        { key: 'illumination_frac', value: moonCard.illumination_frac },
+        { key: 'sign_index', value: moonCard.sign_index },
+        { key: 'sign_name_fr', value: moonCard.sign_name_fr },
+        { key: 'sign_name_en', value: moonCard.sign_name_en },
+        { key: 'lon_tropical_deg', value: moonCard.lon_tropical_deg },
+        { key: 'deg_in_sign', value: moonCard.deg_in_sign },
+        { key: 'deg_in_sign_dms', value: moonCard.deg_in_sign_dms },
+        { key: 'sign_ingress_ts_utc', value: moonCard.sign_ingress_ts_utc },
+        { key: 'sign_egress_ts_utc', value: moonCard.sign_egress_ts_utc },
+        { key: 'voc_status', value: moonCard.voc_status },
+        { key: 'is_void_of_course', value: moonCard.is_void_of_course },
+        { key: 'voc_start_ts_utc', value: moonCard.voc_start_ts_utc },
+        { key: 'voc_end_ts_utc', value: moonCard.voc_end_ts_utc },
+        { key: 'precision', value: moonCard.precision },
+      ]
+    : [];
 
   const handleClearTable = (tableName: string) => {
     Alert.alert(
@@ -119,6 +192,36 @@ export default function DebugScreen() {
             {error}
           </ThemedText>
         ) : null}
+        <ThemedView style={[styles.moonCard, { backgroundColor: moonCardBg, borderColor: border }]}>
+          <ThemedText type="title" style={styles.tableTitle}>
+            MoonCard1Tropical (local)
+          </ThemedText>
+          {moonCardLoading ? (
+            <ThemedText type="default">Chargement...</ThemedText>
+          ) : null}
+          {moonCardError ? (
+            <ThemedText type="default" style={styles.errorText} lightColor={action} darkColor={action}>
+              {moonCardError}
+            </ThemedText>
+          ) : null}
+          {!moonCardLoading && !moonCardError && moonCardEntries.length ? (
+            <View style={styles.moonCardList}>
+              {moonCardEntries.map((entry) => (
+                <View key={`moon-card-${entry.key}`} style={styles.moonCardRow}>
+                  <ThemedText type="default" style={styles.moonCardKey}>
+                    {entry.key}
+                  </ThemedText>
+                  <ThemedText type="default" style={styles.moonCardValue}>
+                    {formatMoonCardValue(entry.value)}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {!moonCardLoading && !moonCardError && !moonCardEntries.length ? (
+            <ThemedText type="default">Aucune donnee.</ThemedText>
+          ) : null}
+        </ThemedView>
         {!loading && !tables.length ? (
           <ThemedText type="default">Aucune table trouvee.</ThemedText>
         ) : null}
@@ -165,7 +268,11 @@ export default function DebugScreen() {
               <View>
                 <View style={[styles.row, styles.headerRowTable, { backgroundColor: tableHeaderBg }]}>
                   {table.columns.map((col) => (
-                    <ThemedText key={`${table.name}-col-${col}`} style={[styles.cell, styles.cellHeader]}>
+                    <ThemedText
+                      key={`${table.name}-col-${col}`}
+                      style={[styles.cell, styles.cellHeader]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail">
                       {col}
                     </ThemedText>
                   ))}
@@ -173,7 +280,11 @@ export default function DebugScreen() {
                 {table.rows.map((row, rowIndex) => (
                   <View key={`${table.name}-row-${rowIndex}`} style={styles.row}>
                     {table.columns.map((col) => (
-                      <ThemedText key={`${table.name}-${rowIndex}-${col}`} style={styles.cell}>
+                      <ThemedText
+                        key={`${table.name}-${rowIndex}-${col}`}
+                        style={styles.cell}
+                        numberOfLines={1}
+                        ellipsizeMode="tail">
                         {row[col] === null || row[col] === undefined ? '' : String(row[col])}
                       </ThemedText>
                     ))}
@@ -222,6 +333,30 @@ const styles = StyleSheet.create({
   },
   errorText: {
   },
+  moonCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  moonCardList: {
+    gap: 6,
+  },
+  moonCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  moonCardKey: {
+    fontSize: 12,
+    opacity: 0.7,
+    flex: 1,
+  },
+  moonCardValue: {
+    fontSize: 12,
+    flex: 1,
+    textAlign: 'right',
+  },
   tableCard: {
     gap: 8,
     padding: 12,
@@ -258,11 +393,15 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 32,
   },
   headerRowTable: {
+    alignItems: 'center',
   },
   cell: {
-    minWidth: 120,
+    width: 150,
+    minWidth: 150,
     paddingVertical: 6,
     paddingHorizontal: 8,
     fontSize: 12,

@@ -6,6 +6,11 @@ export const TYPO = {
     lineHeight: 28,
     fontWeight: '600',
   },
+  superTitre: {
+    fontSize: 25,
+    lineHeight: 40,
+    fontWeight: '600',
+  },
   baseline: {
     fontSize: 16,
     lineHeight: 22,

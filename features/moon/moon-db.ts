@@ -22,9 +22,9 @@ const CANONIQUE_COLUMNS = [
   { name: 'm43_pab_lon_deg', type: 'REAL' },
   { name: 'm43_pab_lat_deg', type: 'REAL' },
   { name: 'm43_phi_deg', type: 'REAL' },
+  { name: 'm29_constellation', type: 'TEXT' },
   { name: 's31_ecl_lon_deg', type: 'REAL' },
   { name: 's31_ecl_lat_deg', type: 'REAL' },
-  { name: 'created_at_utc', type: 'TEXT' },
 ];
 
 const MS_MAPPING_COLUMNS = [
@@ -119,9 +119,9 @@ export async function upsertMoonCanoniqueRows(
         m43_pab_lon_deg,
         m43_pab_lat_deg,
         m43_phi_deg,
+        m29_constellation,
         s31_ecl_lon_deg,
-        s31_ecl_lat_deg,
-        created_at_utc
+        s31_ecl_lat_deg
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
@@ -141,9 +141,9 @@ export async function upsertMoonCanoniqueRows(
           row.m43_pab_lon_deg ?? null,
           row.m43_pab_lat_deg ?? null,
           row.m43_phi_deg ?? null,
+          row.m29_constellation ?? null,
           row.s31_ecl_lon_deg ?? null,
           row.s31_ecl_lat_deg ?? null,
-          row.created_at_utc ?? null,
         ]);
       }
     } finally {

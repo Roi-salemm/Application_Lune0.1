@@ -61,7 +61,7 @@ export function MoonPhaseHeader({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <ThemedText style={styles.title} colorName="title">
+        <ThemedText style={styles.title} colorName="title" variant="superTitre">
           {title}
         </ThemedText>
         <ThemedText style={styles.subtitle} colorName="annex">
@@ -165,9 +165,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
     letterSpacing: 0.2,
+    marginTop: 12,
   },
   subtitle: {
     fontSize: 12,
@@ -175,7 +174,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   moonCluster: {
-    marginTop: 24,
+    marginTop: 12,
     width: '100%',
     height: MOON_SIZE,
     alignItems: 'center',

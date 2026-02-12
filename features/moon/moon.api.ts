@@ -16,9 +16,9 @@ export type MoonCanoniqueRow = {
   m43_pab_lon_deg?: number | string | null;
   m43_pab_lat_deg?: number | string | null;
   m43_phi_deg?: number | string | null;
+  m29_constellation?: string | null;
   s31_ecl_lon_deg?: number | string | null;
   s31_ecl_lat_deg?: number | string | null;
-  created_at_utc?: string | null;
   [key: string]: unknown;
 };
 
