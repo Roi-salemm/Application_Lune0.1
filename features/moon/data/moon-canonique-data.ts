@@ -7,16 +7,22 @@ type CanoniqueRow = {
   ts_utc: string;
   m20_range_km?: number | string | null;
   m10_illum_frac?: number | string | null;
+  m31_ecl_lon_deg?: number | string | null;
 };
 
 export type CanoniqueDistanceSnapshot = {
   asOf: Date;
-  distKm: number | null;
+  distAu: number | null;
 };
 
 export type CanoniqueIlluminationPoint = {
   asOf: Date;
   illumFrac: number | null;
+};
+
+export type CanoniqueOrbitSnapshot = {
+  asOf: Date;
+  moonLonDeg: number | null;
 };
 
 export type CanoniqueIlluminationWindow = {
@@ -41,6 +47,33 @@ async function fetchNearestCanoniqueRow(targetUtc: string) {
 
   row = await db.getFirstAsync<CanoniqueRow>(
     `SELECT ts_utc, m20_range_km, m10_illum_frac
+     FROM canonique_data
+     WHERE ts_utc >= ?
+     ORDER BY ts_utc ASC
+     LIMIT 1`,
+    [targetUtc]
+  );
+
+  return row?.ts_utc ? row : null;
+}
+
+async function fetchNearestCanoniqueOrbitRow(targetUtc: string) {
+  const db = await initMoonDb();
+  let row = await db.getFirstAsync<CanoniqueRow>(
+    `SELECT ts_utc, m31_ecl_lon_deg
+     FROM canonique_data
+     WHERE ts_utc <= ?
+     ORDER BY ts_utc DESC
+     LIMIT 1`,
+    [targetUtc]
+  );
+
+  if (row?.ts_utc) {
+    return row;
+  }
+
+  row = await db.getFirstAsync<CanoniqueRow>(
+    `SELECT ts_utc, m31_ecl_lon_deg
      FROM canonique_data
      WHERE ts_utc >= ?
      ORDER BY ts_utc ASC
@@ -95,7 +128,29 @@ export async function fetchCanoniqueDistanceSnapshot(
 
   return {
     asOf,
-    distKm: toNumber(row.m20_range_km),
+    distAu: toNumber(row.m20_range_km),
+  };
+}
+
+// Snapshot de longitude ecliptique lunaire (degres) pour positionner la lune sur l'orbite.
+// Pourquoi : fournir un angle coherent sans logique UI.
+export async function fetchCanoniqueOrbitSnapshot(
+  targetDate: Date
+): Promise<CanoniqueOrbitSnapshot | null> {
+  const targetUtc = formatSqlUtc(targetDate);
+  const row = await fetchNearestCanoniqueOrbitRow(targetUtc);
+  if (!row?.ts_utc) {
+    return null;
+  }
+
+  const asOf = parseSqlUtc(row.ts_utc);
+  if (!asOf) {
+    return null;
+  }
+
+  return {
+    asOf,
+    moonLonDeg: toNumber(row.m31_ecl_lon_deg),
   };
 }
 

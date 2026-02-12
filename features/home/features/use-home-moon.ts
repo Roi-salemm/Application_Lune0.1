@@ -6,17 +6,18 @@ import type { ImageSourcePropType } from 'react-native';
 import {
   formatAgeDaysLabel,
   formatAsOfLabel,
-  formatDistanceKmLabel,
+  formatDistanceKmLabelFromAu,
   formatLunarCycleLabel,
   formatMoonPhaseLabel,
+  formatNewMoonWindowParts,
   formatPercentage,
+  formatRemainingFromMs,
   formatRemainingDaysLabel,
 } from '@/features/home/domain/moon-formatters';
 import { getMoonImageByAgeDays } from '@/features/home/domain/moon-image-map';
 import {
-  fetchMsMappingNewMoonWindow,
+  fetchMsMappingCycleBoundsUtc,
   fetchMsMappingSnapshot,
-  fetchMsMappingNextNewMoonFromDayStart,
   fetchMsMappingYearCycleIndex,
 } from '@/features/moon/data/moon-ms-mapping-data';
 import {
@@ -34,7 +35,15 @@ type HomeMoonState = {
   ageLabel?: string;
   moonImageSource?: ImageSourcePropType;
   cycleEndLabel?: string;
+  cycleStartDateLabel?: string;
+  cycleEndDateLabel?: string;
   distanceLabel?: string;
+  previousNewMoonDayLabel?: string;
+  previousNewMoonTimeLabel?: string;
+  nextNewMoonDayLabel?: string;
+  nextNewMoonTimeLabel?: string;
+  nextNewMoonLabel?: string;
+  nextNewMoonRemainingLabel?: string;
   visibleInLabel?: string;
   setInLabel?: string;
   altitudeLabel?: string;
@@ -59,7 +68,15 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const [ageLabel, setAgeLabel] = useState<string | undefined>(undefined);
   const [moonImageSource, setMoonImageSource] = useState<ImageSourcePropType | undefined>(undefined);
   const [cycleEndLabel, setCycleEndLabel] = useState<string | undefined>(undefined);
+  const [cycleStartDateLabel, setCycleStartDateLabel] = useState<string | undefined>(undefined);
+  const [cycleEndDateLabel, setCycleEndDateLabel] = useState<string | undefined>(undefined);
   const [distanceLabel, setDistanceLabel] = useState<string | undefined>(undefined);
+  const [previousNewMoonDayLabel, setPreviousNewMoonDayLabel] = useState<string | undefined>(undefined);
+  const [previousNewMoonTimeLabel, setPreviousNewMoonTimeLabel] = useState<string | undefined>(undefined);
+  const [nextNewMoonDayLabel, setNextNewMoonDayLabel] = useState<string | undefined>(undefined);
+  const [nextNewMoonTimeLabel, setNextNewMoonTimeLabel] = useState<string | undefined>(undefined);
+  const [nextNewMoonLabel, setNextNewMoonLabel] = useState<string | undefined>(undefined);
+  const [nextNewMoonRemainingLabel, setNextNewMoonRemainingLabel] = useState<string | undefined>(undefined);
   const [syncing, setSyncing] = useState<boolean>(false);
   const lastNewMoonRef = useRef<Date | null>(null);
   const nextNewMoonRef = useRef<Date | null>(null);
@@ -168,6 +185,8 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
       ? formatRemainingDaysLabel(remainingDays)
       : undefined;
     setCycleEndLabel(cycleEndLabel);
+    const remainingMs = nextNewMoon ? Math.max(0, nextNewMoon.getTime() - now.getTime()) : null;
+    setNextNewMoonRemainingLabel(formatRemainingFromMs(remainingMs));
 
     setAsOfDate(now);
   }, []);
@@ -180,19 +199,18 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     setSyncing(true);
     try {
       const targetDate = new Date();
-    const [msSnapshot, newMoonWindow, nextNewMoon, canoniqueSnapshot, illumWindow] = await Promise.all([
-      fetchMsMappingSnapshot(targetDate),
-      fetchMsMappingNewMoonWindow(targetDate),
-      fetchMsMappingNextNewMoonFromDayStart(targetDate),
-      fetchCanoniqueDistanceSnapshot(targetDate),
-      fetchCanoniqueIlluminationWindow(targetDate),
-    ]);
+      const [msSnapshot, cycleBounds, canoniqueSnapshot, illumWindow] = await Promise.all([
+        fetchMsMappingSnapshot(targetDate),
+        fetchMsMappingCycleBoundsUtc(targetDate),
+        fetchCanoniqueDistanceSnapshot(targetDate),
+        fetchCanoniqueIlluminationWindow(targetDate),
+      ]);
 
-      lastNewMoonRef.current = newMoonWindow.previous;
-      nextNewMoonRef.current = nextNewMoon;
+      lastNewMoonRef.current = cycleBounds.start;
+      nextNewMoonRef.current = cycleBounds.end;
       cycleIndexRef.current = await fetchMsMappingYearCycleIndex({
         targetDate,
-        currentCycleStart: newMoonWindow.previous,
+        currentCycleStart: cycleBounds.start,
       });
       illumPctRef.current = msSnapshot?.illuminationPct ?? null;
       phaseDegRef.current = msSnapshot?.phaseDeg ?? null;
@@ -201,7 +219,16 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
       const illumPct = computeIlluminationPct(targetDate, illumWindow);
       illumPctRef.current = illumPct;
       setPercentage(formatPercentage(illumPct));
-      setDistanceLabel(formatDistanceKmLabel(canoniqueSnapshot?.distKm ?? null));
+      setDistanceLabel(formatDistanceKmLabelFromAu(canoniqueSnapshot?.distAu ?? null));
+      const previousWindow = formatNewMoonWindowParts(cycleBounds.start);
+      const nextWindow = formatNewMoonWindowParts(cycleBounds.end);
+      setPreviousNewMoonDayLabel(previousWindow?.dayLabel);
+      setPreviousNewMoonTimeLabel(previousWindow?.timeLabel);
+      setNextNewMoonDayLabel(nextWindow?.dayLabel);
+      setNextNewMoonTimeLabel(nextWindow?.timeLabel);
+      setNextNewMoonLabel(nextWindow ? `${nextWindow.dayLabel} ${nextWindow.timeLabel}` : undefined);
+      setCycleStartDateLabel(previousWindow ? `${previousWindow.dayLabel} ${previousWindow.timeLabel}` : undefined);
+      setCycleEndDateLabel(nextWindow ? `${nextWindow.dayLabel} ${nextWindow.timeLabel}` : undefined);
       setAsOfDate(new Date());
 
       updateDerivedLabels();
@@ -240,7 +267,17 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
         const nowMs = Date.now();
         const nextNewMoon = nextNewMoonRef.current;
         const lastNewMoon = lastNewMoonRef.current;
-        if (!lastNewMoon || (nextNewMoon && nowMs >= nextNewMoon.getTime())) {
+        const sameLocalDay =
+          nextNewMoon &&
+          (() => {
+            const now = new Date(nowMs);
+            return (
+              nextNewMoon.getFullYear() === now.getFullYear() &&
+              nextNewMoon.getMonth() === now.getMonth() &&
+              nextNewMoon.getDate() === now.getDate()
+            );
+          })();
+        if (!lastNewMoon || (nextNewMoon && nowMs >= nextNewMoon.getTime() && !sameLocalDay)) {
           void loadMoonData();
         }
       }, refreshMs);
@@ -262,7 +299,15 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     ageLabel,
     moonImageSource,
     cycleEndLabel,
+    cycleStartDateLabel,
+    cycleEndDateLabel,
     distanceLabel,
+    previousNewMoonDayLabel,
+    previousNewMoonTimeLabel,
+    nextNewMoonDayLabel,
+    nextNewMoonTimeLabel,
+    nextNewMoonLabel,
+    nextNewMoonRemainingLabel,
     visibleInLabel: undefined,
     setInLabel: undefined,
     altitudeLabel: undefined,

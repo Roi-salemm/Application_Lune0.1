@@ -2,9 +2,9 @@
 // Pourquoi : utiliser uniquement les tables locales sans dependance reseau.
 // Infos : phase = 0 represente la nouvelle lune, phase_hour contient l'heure exacte (UTC) si fournie.
 import { initMoonDb } from '@/features/moon/moon-db';
-import { formatSqlUtc, parseSqlUtc, toNumber } from '@/features/moon/data/moon-sql-utils';
+import { formatLocalDayKey, formatSqlUtc, parseSqlUtc, toNumber } from '@/features/moon/data/moon-sql-utils';
 
-type MsMappingRow = {
+export type MsMappingRow = {
   ts_utc: string;
   phase?: number | string | null;
   phase_hour?: string | null;
@@ -22,6 +22,11 @@ export type MsMappingSnapshot = {
 export type MsMappingNewMoonWindow = {
   previous: Date | null;
   next: Date | null;
+};
+
+export type MsMappingCycleBounds = {
+  start: Date | null;
+  end: Date | null;
 };
 
 export type MsMappingPhaseHour = {
@@ -46,6 +51,7 @@ function toEventDate(row: MsMappingRow) {
   return parseSqlUtc(raw);
 }
 
+/*
 async function fetchNearestMsMappingRow(targetUtc: string) {
   const db = await initMoonDb();
   let row = await db.getFirstAsync<MsMappingRow>(
@@ -72,7 +78,27 @@ async function fetchNearestMsMappingRow(targetUtc: string) {
 
   return row?.ts_utc ? row : null;
 }
+*/
 
+async function fetchMsMappingRowForLocalDay(targetDate: Date) {
+  const dayKey = formatLocalDayKey(targetDate);
+  const db = await initMoonDb();
+  return await db.getFirstAsync<MsMappingRow>(
+    `SELECT ts_utc, phase, phase_hour, m10_illum_frac, m31_ecl_lon_deg, s31_ecl_lon_deg
+     FROM ms_mapping
+     WHERE ts_utc LIKE ?
+     ORDER BY ts_utc ASC
+     LIMIT 1`,
+    [`${dayKey}%`]
+  );
+}
+
+export async function fetchMsMappingLocalDayRow(targetDate: Date): Promise<MsMappingRow | null> {
+  const row = await fetchMsMappingRowForLocalDay(targetDate);
+  return row?.ts_utc ? row : null;
+}
+
+/*
 async function fetchNewMoonCandidate(
   targetUtc: string,
   comparator: '<=' | '>=',
@@ -94,12 +120,12 @@ async function fetchNewMoonCandidate(
 
   return toEventDate(row);
 }
+*/
 
 export async function fetchMsMappingSnapshot(
   targetDate: Date
 ): Promise<MsMappingSnapshot | null> {
-  const targetUtc = formatSqlUtc(targetDate);
-  const row = await fetchNearestMsMappingRow(targetUtc);
+  const row = await fetchMsMappingRowForLocalDay(targetDate);
   if (!row?.ts_utc) {
     return null;
   }
@@ -124,6 +150,7 @@ export async function fetchMsMappingSnapshot(
   };
 }
 
+/*
 export async function fetchMsMappingNewMoonWindow(
   targetDate: Date
 ): Promise<MsMappingNewMoonWindow> {
@@ -136,6 +163,57 @@ export async function fetchMsMappingNewMoonWindow(
   return {
     previous,
     next,
+  };
+}
+*/
+
+// Requete unique pour trouver debut/fin du cycle courant (deux nouvelles lunes consecutives).
+// Pourquoi : fiabiliser le calcul avec phase_hour normalise et une seule source de verite.
+export async function fetchMsMappingCycleBoundsUtc(
+  targetDate: Date
+): Promise<MsMappingCycleBounds> {
+  const db = await initMoonDb();
+  const targetUtc = formatSqlUtc(targetDate);
+  const row = await db.getFirstAsync<{
+    cycle_start_utc?: string | null;
+    cycle_end_utc?: string | null;
+  }>(
+    `WITH nm AS (
+       SELECT CASE
+         WHEN phase_hour IS NULL THEN NULL
+         WHEN instr(phase_hour, '-') = 0 THEN datetime(date(ts_utc) || ' ' || phase_hour)
+         ELSE datetime(replace(substr(phase_hour, 1, 19), 'T', ' '))
+       END AS nm_utc
+       FROM ms_mapping
+       WHERE CAST(phase AS INTEGER) = 0
+         AND phase_hour IS NOT NULL
+     ),
+     valid_nm AS (
+       SELECT nm_utc FROM nm WHERE nm_utc IS NOT NULL
+     ),
+     last_nm AS (
+       SELECT nm_utc
+       FROM valid_nm
+       WHERE nm_utc <= datetime(?)
+       ORDER BY nm_utc DESC
+       LIMIT 1
+     ),
+     next_nm AS (
+       SELECT nm_utc
+       FROM valid_nm
+       WHERE nm_utc > (SELECT nm_utc FROM last_nm)
+       ORDER BY nm_utc ASC
+       LIMIT 1
+     )
+     SELECT
+       (SELECT nm_utc FROM last_nm) AS cycle_start_utc,
+       (SELECT nm_utc FROM next_nm) AS cycle_end_utc`,
+    [targetUtc]
+  );
+
+  return {
+    start: row?.cycle_start_utc ? parseSqlUtc(row.cycle_start_utc) : null,
+    end: row?.cycle_end_utc ? parseSqlUtc(row.cycle_end_utc) : null,
   };
 }
 
@@ -207,8 +285,9 @@ export async function fetchMsMappingYearCycleIndex(params: {
   return count > 0 ? count : 1;
 }
 
-// Trouve la prochaine nouvelle lune en partant du debut du jour local.
-// Pourquoi : eviter d'utiliser l'heure courante pour la recherche, tout en gardant phase_hour comme reference exacte.
+// Trouve la prochaine nouvelle lune a partir du jour local (sans filtrer par heure).
+// Pourquoi : rester aligne avec une table journaliere tout en gardant phase_hour comme reference exacte.
+/*
 export async function fetchMsMappingNextNewMoonFromDayStart(
   targetDate: Date
 ): Promise<Date | null> {
@@ -219,29 +298,120 @@ export async function fetchMsMappingNextNewMoonFromDayStart(
     targetDate.getDate()
   );
   const dayStartUtc = formatSqlUtc(dayStartLocal);
-  const nowUtc = formatSqlUtc(targetDate);
 
-  const fetchNextAfter = async (utc: string) => {
-    const row = await db.getFirstAsync<MsMappingRow>(
-      `SELECT ts_utc, phase_hour
-       FROM ms_mapping
-       WHERE phase = 0 AND phase_hour IS NOT NULL AND phase_hour >= ?
-       ORDER BY phase_hour ASC
-       LIMIT 1`,
-      [utc]
-    );
+  const row = await db.getFirstAsync<MsMappingRow>(
+    `SELECT ts_utc, phase_hour
+     FROM ms_mapping
+     WHERE phase = 0 AND phase_hour IS NOT NULL AND phase_hour >= ?
+     ORDER BY phase_hour ASC
+     LIMIT 1`,
+    [dayStartUtc]
+  );
 
-    return row?.phase_hour ? parseSqlUtc(row.phase_hour) : null;
-  };
-
-  const candidate = await fetchNextAfter(dayStartUtc);
-  if (!candidate) {
+  if (!row?.phase_hour) {
     return null;
   }
 
-  if (candidate.getTime() <= targetDate.getTime()) {
-    return await fetchNextAfter(nowUtc);
-  }
+  return parseSqlUtc(row.phase_hour);
+}
+*/
 
-  return candidate;
+// Trouve la prochaine nouvelle lune en reconstituant l'heure d'event (date ts_utc + phase_hour).
+// Pourquoi : obtenir l'event exact du prochain cycle en s'appuyant sur phase_hour.
+/*
+export async function fetchMsMappingNextNewMoonEventUtc(): Promise<{
+  cycleStartLocal: string | null;
+  previousCycleStartLocal: string | null;
+  nextCycleStartLocal: string | null;
+}> {
+  const db = await initMoonDb();
+  const row = await db.getFirstAsync<{
+    cycle_start_local?: string | null;
+    previous_cycle_start_local?: string | null;
+    next_cycle_start_local?: string | null;
+  }>(
+    `WITH nm AS (
+       SELECT CASE
+         WHEN phase_hour IS NULL THEN NULL
+         WHEN instr(phase_hour, '-') = 0 THEN datetime(date(ts_utc) || ' ' || phase_hour)
+         ELSE datetime(replace(substr(phase_hour, 1, 19), 'T', ' '))
+       END AS nm_utc
+       FROM ms_mapping
+       WHERE CAST(phase AS INTEGER) = 0
+         AND phase_hour IS NOT NULL
+     ),
+     last_nm AS (
+       SELECT nm_utc
+       FROM nm
+       WHERE nm_utc <= datetime('now')
+       ORDER BY nm_utc DESC
+       LIMIT 1
+     )
+     SELECT
+       datetime((SELECT nm_utc FROM last_nm), 'localtime') AS cycle_start_local,
+       datetime((
+         SELECT nm_utc
+         FROM nm
+         WHERE nm_utc < (SELECT nm_utc FROM last_nm)
+         ORDER BY nm_utc DESC
+         LIMIT 1
+       ), 'localtime') AS previous_cycle_start_local,
+       datetime((
+         SELECT nm_utc
+         FROM nm
+         WHERE nm_utc > datetime('now')
+         ORDER BY nm_utc ASC
+         LIMIT 1
+       ), 'localtime') AS next_cycle_start_local`
+  );
+
+  return {
+    cycleStartLocal: row?.cycle_start_local ?? null,
+    previousCycleStartLocal: row?.previous_cycle_start_local ?? null,
+    nextCycleStartLocal: row?.next_cycle_start_local ?? null,
+  };
+}
+*/
+
+export async function fetchMsMappingPhaseHourDiagnostics(): Promise<{
+  invalidCount: number;
+  totalCount: number;
+  invalidSamples: Array<{ phase_hour: string | null }>;
+  feb17Row: { phase_hour: string | null } | null;
+}> {
+  const db = await initMoonDb();
+  const stats = await db.getFirstAsync<{ invalid_count: number; total_count: number }>(
+    `SELECT
+       SUM(CASE WHEN datetime(phase_hour) IS NULL THEN 1 ELSE 0 END) AS invalid_count,
+       COUNT(*) AS total_count
+     FROM ms_mapping
+     WHERE CAST(phase AS INTEGER) = 0 AND phase_hour IS NOT NULL`
+  );
+
+  const invalidSamples = await db.getAllAsync<{ phase_hour: string | null }>(
+    `SELECT phase_hour
+     FROM ms_mapping
+     WHERE CAST(phase AS INTEGER) = 0
+       AND phase_hour IS NOT NULL
+       AND datetime(phase_hour) IS NULL
+     ORDER BY phase_hour ASC
+     LIMIT 5`
+  );
+
+  const feb17Row = await db.getFirstAsync<{ phase_hour: string | null }>(
+    `SELECT phase_hour
+     FROM ms_mapping
+     WHERE CAST(phase AS INTEGER) = 0
+       AND phase_hour IS NOT NULL
+       AND substr(phase_hour, 1, 10) = '2026-02-17'
+     ORDER BY phase_hour ASC
+     LIMIT 1`
+  );
+
+  return {
+    invalidCount: stats?.invalid_count ?? 0,
+    totalCount: stats?.total_count ?? 0,
+    invalidSamples: invalidSamples ?? [],
+    feb17Row: feb17Row ?? null,
+  };
 }

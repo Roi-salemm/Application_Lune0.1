@@ -9,6 +9,7 @@ import { MoonPhaseHeader } from '@/features/home/components/moon-phase-header';
 import { HomeDebugControls } from '@/features/home/features/home-debug-controls';
 import { useHomeMoon } from '@/features/home/features/use-home-moon';
 import { HOME_REGISTRY } from '@/features/home/registry';
+import { AstronomieCarousel } from '@/features/home/ui/astronomie/astronomie-carousel';
 import { AstroDailyCard } from '@/features/home/ui/sections/astro-daily';
 import { AstronomicDataHero } from '@/features/home/ui/sections/astronomic-data-hero';
 import { MoonDailyCard } from '@/features/home/ui/sections/moon-daily';
@@ -46,11 +47,18 @@ export default function HomeScreen() {
     ageLabel,
     moonImageSource,
     cycleEndLabel,
+    cycleStartDateLabel,
+    cycleEndDateLabel,
     distanceLabel,
     visibleInLabel,
     setInLabel,
     altitudeLabel,
     azimuthLabel,
+    previousNewMoonDayLabel,
+    previousNewMoonTimeLabel,
+    nextNewMoonDayLabel,
+    nextNewMoonTimeLabel,
+    nextNewMoonRemainingLabel,
   } = useHomeMoon();
   const overlayOpacity = scrollY.interpolate({
     inputRange: [0, 220],
@@ -88,12 +96,26 @@ export default function HomeScreen() {
           <AstronomicDataHero
             ageLabel={ageLabel}
             cycleEndLabel={cycleEndLabel}
+            cycleStartDateLabel={cycleStartDateLabel}
+            cycleEndDateLabel={cycleEndDateLabel}
             distanceLabel={distanceLabel}
             visibleInLabel={visibleInLabel}
             setInLabel={setInLabel}
             altitudeLabel={altitudeLabel}
             azimuthLabel={azimuthLabel}
           />
+          <View style={styles.astronomieSection}>
+            <AstronomieCarousel
+              ageLabel={ageLabel}
+              nextNewMoonRemainingLabel={nextNewMoonRemainingLabel}
+              previousNewMoonDayLabel={previousNewMoonDayLabel}
+              previousNewMoonTimeLabel={previousNewMoonTimeLabel}
+              nextNewMoonDayLabel={nextNewMoonDayLabel}
+              nextNewMoonTimeLabel={nextNewMoonTimeLabel}
+              distanceGeocentricLabel={distanceLabel}
+              phaseLabel={phaseLabel}
+            />
+          </View>
           <View style={styles.moonDaily}>
             <MoonDailyCard />
           </View>
@@ -148,6 +170,9 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   moonDaily: {
+    marginTop: 18,
+  },
+  astronomieSection: {
     marginTop: 18,
   },
   content: {

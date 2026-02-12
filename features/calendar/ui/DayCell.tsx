@@ -9,9 +9,9 @@ import { ThemedText } from '@/components/shared/themed-text';
 import { withAlpha } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import Phase0 from '../../../assets/graphisme/p0_nouvelle_lune.svg';
-import Phase2 from '../../../assets/graphisme/p2_permier_quard.svg';
+import Phase2 from '../../../assets/graphisme/p2_permier_quartier.svg';
 import Phase4 from '../../../assets/graphisme/p4_pleine_lune.svg';
-import Phase6 from '../../../assets/graphisme/p6_dernier_quard.svg';
+import Phase6 from '../../../assets/graphisme/p6_dernier_quartier.svg';
 
 type DayCellProps = {
   date: Date | null;

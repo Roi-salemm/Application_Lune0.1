@@ -56,6 +56,27 @@ export function formatAsOfLabel(date: Date | null | undefined) {
   return `${weekday} ${day} ${month}`;
 }
 
+// Formate une date de nouvelle lune pour la card astronomie (ex: "1 Janvier 20h49").
+// Pourquoi : reutiliser un libelle court et lisible, coherent avec les mois du calendrier.
+export function formatNewMoonWindowParts(date: Date | null | undefined) {
+  if (!date) {
+    return undefined;
+  }
+
+  const month = MONTHS[date.getMonth()];
+  if (!month) {
+    return undefined;
+  }
+
+  const day = date.getDate();
+  const timeValue = formatTimeValue(date);
+  const [hours = '00', minutes = '00'] = timeValue.split(':');
+  return {
+    dayLabel: `${day} ${month}`,
+    timeLabel: `${hours}h${minutes}`,
+  };
+}
+
 // Formate l'age de la lunaison en jours/heures/minutes (ex: "18j 4h 48m").
 export function formatAgeDaysLabel(value: number | string | null | undefined) {
   if (value === null || value === undefined) {
@@ -124,6 +145,20 @@ export function formatDistanceKmLabel(value: number | string | null | undefined)
   return `${spaced}${decimals} Km`;
 }
 
+// Formate une distance fournie en AU vers un libelle en kilometres.
+// Pourquoi : convertir les valeurs canonique_data si elles sont exprimees en UA.
+export function formatDistanceKmLabelFromAu(value: number | string | null | undefined) {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const numeric = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(numeric)) {
+    return undefined;
+  }
+  const km = numeric * 149_597_870.7;
+  return formatDistanceKmLabel(km);
+}
+
 // Formate la date de prochaine nouvelle lune en local (ex: "14/01/2026 15h00").
 export function formatNextNewMoonDateLabel(date: Date | null | undefined) {
   if (!date) {
@@ -151,6 +186,24 @@ export function formatRemainingDaysLabel(value: number | null | undefined) {
     totalMinutes = 0;
   }
 
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${days}j ${hours}h ${minutes}m`;
+}
+
+// Formate un delai (ms) en jours/heures/minutes.
+// Pourquoi : afficher le temps restant jusqu'a la prochaine nouvelle lune.
+export function formatRemainingFromMs(valueMs: number | null | undefined) {
+  if (valueMs === null || valueMs === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(valueMs)) {
+    return undefined;
+  }
+  const clamped = Math.max(0, valueMs);
+  let totalMinutes = Math.floor(clamped / (1000 * 60));
+  let days = Math.floor(totalMinutes / (24 * 60));
+  totalMinutes -= days * 24 * 60;
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${days}j ${hours}h ${minutes}m`;

@@ -8,6 +8,8 @@ import { ThemedText } from '@/components/shared/themed-text';
 type AstronomicDataHeroProps = {
   ageLabel?: string;
   cycleEndLabel?: string;
+  cycleStartDateLabel?: string;
+  cycleEndDateLabel?: string;
   distanceLabel?: string;
   visibleInLabel?: string;
   setInLabel?: string;
@@ -20,6 +22,8 @@ const fallbackValue = (value?: string) => value ?? '...';
 export function AstronomicDataHero({
   ageLabel,
   cycleEndLabel,
+  cycleStartDateLabel,
+  cycleEndDateLabel,
   distanceLabel,
   visibleInLabel,
   setInLabel,
@@ -30,6 +34,10 @@ export function AstronomicDataHero({
     [
       { label: 'Age de la lunaison', value: fallbackValue(ageLabel) },
       { label: 'prochain cycle', value: fallbackValue(cycleEndLabel) },
+    ],
+    [
+      { label: 'Debut du cycle', value: fallbackValue(cycleStartDateLabel) },
+      { label: 'Fin du cycle', value: fallbackValue(cycleEndDateLabel) },
     ],
     [
       { label: 'Distance', value: fallbackValue(distanceLabel) },

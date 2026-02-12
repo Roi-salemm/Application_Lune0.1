@@ -8,7 +8,13 @@ import { ThemedView } from '@/components/shared/themed-view';
 import { withAlpha } from '@/constants/theme';
 import { useSQLiteDebug } from '@/features/debug/use-sqlite-debug';
 import type { MoonCard1Tropical } from '@/features/home/ui/moon-card-1-tropical';
+import { formatLocalDayKey } from '@/features/moon/data/moon-sql-utils';
 import { buildMoonCard1Tropical } from '@/features/moon/domain/moon-tropical';
+import {
+  fetchMsMappingCycleBoundsUtc,
+  fetchMsMappingLocalDayRow,
+  fetchMsMappingPhaseHourDiagnostics,
+} from '@/features/moon/data/moon-ms-mapping-data';
 import { syncMoonCanoniqueData, syncMoonMsMappingData } from '@/features/moon/moon.sync';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
@@ -20,6 +26,18 @@ export default function DebugScreen() {
   const [moonCard, setMoonCard] = useState<MoonCard1Tropical | null>(null);
   const [moonCardError, setMoonCardError] = useState<string | null>(null);
   const [moonCardLoading, setMoonCardLoading] = useState<boolean>(false);
+  const [msMappingDebug, setMsMappingDebug] = useState<{
+    dayKey: string;
+    row: Awaited<ReturnType<typeof fetchMsMappingLocalDayRow>>;
+    cycleStart: Date | null;
+    cycleEnd: Date | null;
+    invalidPhaseHourCount: number;
+    totalPhaseHourCount: number;
+    invalidPhaseHourSamples: string[];
+    feb17PhaseHour: string | null;
+  } | null>(null);
+  const [msMappingDebugLoading, setMsMappingDebugLoading] = useState(false);
+  const [msMappingDebugError, setMsMappingDebugError] = useState<string | null>(null);
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
   const text = useThemeColor({}, 'text');
@@ -59,6 +77,51 @@ export default function DebugScreen() {
     };
   }, [tables]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMsMappingDebug = async () => {
+      setMsMappingDebugLoading(true);
+      setMsMappingDebugError(null);
+      try {
+        const now = new Date();
+        const dayKey = formatLocalDayKey(now);
+        const [row, cycleBounds, diagnostics] = await Promise.all([
+          fetchMsMappingLocalDayRow(now),
+          fetchMsMappingCycleBoundsUtc(now),
+          fetchMsMappingPhaseHourDiagnostics(),
+        ]);
+
+        if (!cancelled) {
+          setMsMappingDebug({
+            dayKey,
+            row,
+            cycleStart: cycleBounds.start,
+            cycleEnd: cycleBounds.end,
+            invalidPhaseHourCount: diagnostics.invalidCount,
+            totalPhaseHourCount: diagnostics.totalCount,
+            invalidPhaseHourSamples: diagnostics.invalidSamples.map((item) => item.phase_hour ?? '...'),
+            feb17PhaseHour: diagnostics.feb17Row?.phase_hour ?? null,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMsMappingDebugError(err instanceof Error ? err.message : 'Erreur inconnue');
+        }
+      } finally {
+        if (!cancelled) {
+          setMsMappingDebugLoading(false);
+        }
+      }
+    };
+
+    void loadMsMappingDebug();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tables]);
+
   const formatMoonCardValue = (value: unknown) => {
     if (value === null || value === undefined) {
       return '...';
@@ -73,6 +136,13 @@ export default function DebugScreen() {
       return value ? 'true' : 'false';
     }
     return String(value);
+  };
+
+  const formatDebugValue = (value: unknown) => {
+    if (value instanceof Date) {
+      return `${value.toISOString()} (${value.toLocaleString()})`;
+    }
+    return formatMoonCardValue(value);
   };
 
   const moonCardEntries = moonCard
@@ -219,6 +289,106 @@ export default function DebugScreen() {
             </View>
           ) : null}
           {!moonCardLoading && !moonCardError && !moonCardEntries.length ? (
+            <ThemedText type="default">Aucune donnee.</ThemedText>
+          ) : null}
+        </ThemedView>
+        <ThemedView style={[styles.moonCard, { backgroundColor: moonCardBg, borderColor: border }]}>
+          <ThemedText type="title" style={styles.tableTitle}>
+            ms_mapping debug (local day)
+          </ThemedText>
+          {msMappingDebugLoading ? (
+            <ThemedText type="default">Chargement...</ThemedText>
+          ) : null}
+          {msMappingDebugError ? (
+            <ThemedText type="default" style={styles.errorText} lightColor={action} darkColor={action}>
+              {msMappingDebugError}
+            </ThemedText>
+          ) : null}
+          {!msMappingDebugLoading && !msMappingDebugError && msMappingDebug ? (
+            <View style={styles.moonCardList}>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  day_key_local (jour local)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.dayKey)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  row.ts_utc (ligne du jour: ts_utc)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.row?.ts_utc)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  row.phase (phase du jour)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.row?.phase)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  row.phase_hour (heure exacte de phase)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.row?.phase_hour)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  cycle_start_utc (debut cycle - requete unique)
+                </ThemedText>
+                <ThemedText
+                  type="default"
+                  style={styles.moonCardValue}
+                  lightColor="#ff4d4f"
+                  darkColor="#ff4d4f">
+                  {formatDebugValue(msMappingDebug.cycleStart)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  cycle_end_utc (fin cycle - requete unique)
+                </ThemedText>
+                <ThemedText
+                  type="default"
+                  style={styles.moonCardValue}
+                  lightColor="#ff4d4f"
+                  darkColor="#ff4d4f">
+                  {formatDebugValue(msMappingDebug.cycleEnd)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  phase_hour invalides (datetime NULL)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(`${msMappingDebug.invalidPhaseHourCount}/${msMappingDebug.totalPhaseHourCount}`)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  invalid_samples (phase_hour)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.invalidPhaseHourSamples)}
+                </ThemedText>
+              </View>
+              <View style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  2026-02-17 phase_hour (brut)
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatDebugValue(msMappingDebug.feb17PhaseHour)}
+                </ThemedText>
+              </View>
+            </View>
+          ) : null}
+          {!msMappingDebugLoading && !msMappingDebugError && !msMappingDebug ? (
             <ThemedText type="default">Aucune donnee.</ThemedText>
           ) : null}
         </ThemedView>

@@ -69,7 +69,9 @@ export function useSQLiteDebug(): SQLiteDebugState {
             `SELECT COUNT(*) AS cnt FROM "${safeName}"`
           );
           const rawRows = await db.getAllAsync<Record<string, unknown>>(
-            `SELECT * FROM "${safeName}" LIMIT 20`
+            table.name === 'ms_mapping'
+              ? `SELECT * FROM "${safeName}" WHERE substr(ts_utc, 1, 7) = '2026-02' ORDER BY ts_utc ASC`
+              : `SELECT * FROM "${safeName}" LIMIT 20`
           );
           const rows = rawRows.map((row) => {
             const nextRow: Record<string, unknown> = {};

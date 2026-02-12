@@ -5,6 +5,10 @@ function pad2(value: number) {
   return String(value).padStart(2, '0');
 }
 
+export function formatLocalDayKey(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 export function formatSqlUtc(date: Date) {
   return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(
     date.getUTCDate(),
@@ -14,7 +18,18 @@ export function formatSqlUtc(date: Date) {
 }
 
 export function parseSqlUtc(value: string) {
-  const [datePart, timePart] = value.split(' ');
+  const trimmed = value.trim();
+  const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(trimmed);
+  const isIso = trimmed.includes('T');
+  if (isIso && hasTimezone) {
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  const normalized = trimmed.replace('T', ' ').replace(/Z$/, '').split('.')[0];
+  const [datePart, timePart] = normalized.split(' ');
   if (!datePart || !timePart) {
     return null;
   }
