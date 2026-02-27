@@ -1,12 +1,13 @@
 // Hook home : lit canonique_data + ms_mapping depuis SQLite et orchestre le formatage pour l'UI.
 // Pourquoi : garder l'ecran simple tout en deleguant les regles de presentation au domain.
-// Rafraichissement : recharge SQLite au montage, puis calcule localement l'age en continu.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Rafraichissement : gere par polling adaptatif global et des ticks locaux limites a l'ecran actif.
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
+
 import {
   formatAgeDaysLabel,
   formatAsOfLabel,
-  formatDistanceKmLabelFromAu,
+  formatDistanceKmLabel,
   formatLunarCycleLabel,
   formatMoonPhaseLabel,
   formatNewMoonWindowParts,
@@ -16,15 +17,17 @@ import {
 } from '@/features/home/domain/moon-formatters';
 import { getMoonImageByAgeDays } from '@/features/home/domain/moon-image-map';
 import {
-  fetchMsMappingCycleBoundsUtc,
+  fetchMsMappingNewMoonWindow,
   fetchMsMappingSnapshot,
   fetchMsMappingYearCycleIndex,
 } from '@/features/moon/data/moon-ms-mapping-data';
 import {
-  fetchCanoniqueDistanceSnapshot,
+  fetchCanoniqueDistanceWindow,
   fetchCanoniqueIlluminationWindow,
+  type CanoniqueDistanceWindow,
   type CanoniqueIlluminationWindow,
 } from '@/features/moon/data/moon-canonique-data';
+import { useAdaptivePollingJob } from '@/features/moon/orchestration/adaptive-polling';
 
 type HomeMoonState = {
   phaseTopLabel?: string;
@@ -35,8 +38,6 @@ type HomeMoonState = {
   ageLabel?: string;
   moonImageSource?: ImageSourcePropType;
   cycleEndLabel?: string;
-  cycleStartDateLabel?: string;
-  cycleEndDateLabel?: string;
   distanceLabel?: string;
   previousNewMoonDayLabel?: string;
   previousNewMoonTimeLabel?: string;
@@ -54,12 +55,19 @@ type HomeMoonState = {
 
 type HomeMoonOptions = {
   refreshMs?: number;
+  isActive?: boolean;
 };
 
-export const DEFAULT_HOME_MOON_REFRESH_MS = 1000;
+export const DEFAULT_HOME_MOON_REFRESH_MS = 60 * 1000;
+const ILLUMINATION_IDLE_REFRESH_MS = 5 * 60 * 1000;
+const DISTANCE_REFRESH_MS = 1000;
+const DISTANCE_WINDOW_REFRESH_MS = 5 * 60 * 1000;
+const DERIVED_IDLE_REFRESH_MS = 5 * 60 * 1000;
+const ILLUMINATION_STEP_PCT = 0.01;
 
 export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const refreshMs = options.refreshMs ?? DEFAULT_HOME_MOON_REFRESH_MS;
+  const isFocused = options.isActive ?? true;
   const [phaseTopLabel, setPhaseTopLabel] = useState<string | undefined>(undefined);
   const [phaseBottomLabel, setPhaseBottomLabel] = useState<string | undefined>(undefined);
   const [percentage, setPercentage] = useState<string | undefined>(undefined);
@@ -68,8 +76,6 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const [ageLabel, setAgeLabel] = useState<string | undefined>(undefined);
   const [moonImageSource, setMoonImageSource] = useState<ImageSourcePropType | undefined>(undefined);
   const [cycleEndLabel, setCycleEndLabel] = useState<string | undefined>(undefined);
-  const [cycleStartDateLabel, setCycleStartDateLabel] = useState<string | undefined>(undefined);
-  const [cycleEndDateLabel, setCycleEndDateLabel] = useState<string | undefined>(undefined);
   const [distanceLabel, setDistanceLabel] = useState<string | undefined>(undefined);
   const [previousNewMoonDayLabel, setPreviousNewMoonDayLabel] = useState<string | undefined>(undefined);
   const [previousNewMoonTimeLabel, setPreviousNewMoonTimeLabel] = useState<string | undefined>(undefined);
@@ -85,6 +91,8 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
   const cycleIndexRef = useRef<number | null>(null);
   const illumWindowRef = useRef<CanoniqueIlluminationWindow | null>(null);
   const illumLoadingRef = useRef(false);
+  const distanceWindowRef = useRef<CanoniqueDistanceWindow | null>(null);
+  const distanceLoadingRef = useRef(false);
   const loadingRef = useRef(false);
 
   const normalizeIllumination = (value: number | null) => {
@@ -138,6 +146,117 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     }
   }, []);
 
+  const loadDistanceWindow = useCallback(async (targetDate: Date) => {
+    if (distanceLoadingRef.current) {
+      return;
+    }
+    distanceLoadingRef.current = true;
+    try {
+      const window = await fetchCanoniqueDistanceWindow(targetDate);
+      distanceWindowRef.current = window;
+    } catch (error) {
+      console.warn('Failed to load canonique distance window', error);
+    } finally {
+      distanceLoadingRef.current = false;
+    }
+  }, []);
+
+  const normalizeDistance = (value: number | null) => {
+    if (value === null || !Number.isFinite(value)) {
+      return null;
+    }
+    if (value > 0 && value <= 10) {
+      return value * 149_597_870.7;
+    }
+    return value;
+  };
+
+  const computeDistanceKm = (
+    now: Date,
+    window: CanoniqueDistanceWindow | null
+  ): number | null => {
+    const previous = window?.previous ?? null;
+    const next = window?.next ?? null;
+    const prevValue = normalizeDistance(previous?.distKm ?? null);
+    const nextValue = normalizeDistance(next?.distKm ?? null);
+
+    if (prevValue === null && nextValue === null) {
+      return null;
+    }
+    if (!previous || prevValue === null) {
+      return nextValue;
+    }
+    if (!next || nextValue === null) {
+      return prevValue;
+    }
+
+    const spanMs = next.asOf.getTime() - previous.asOf.getTime();
+    if (!Number.isFinite(spanMs) || spanMs <= 0) {
+      return prevValue;
+    }
+
+    const tRaw = (now.getTime() - previous.asOf.getTime()) / spanMs;
+    const t = Math.max(0, Math.min(1, tRaw));
+    return prevValue + (nextValue - prevValue) * t;
+  };
+
+  const computeIlluminationNextDelayMs = (
+    now: Date,
+    window: CanoniqueIlluminationWindow | null
+  ): number | null => {
+    const previous = window?.previous ?? null;
+    const next = window?.next ?? null;
+    const prevValue = normalizeIllumination(previous?.illumFrac ?? null);
+    const nextValue = normalizeIllumination(next?.illumFrac ?? null);
+
+    if (prevValue === null || nextValue === null || !previous || !next) {
+      return null;
+    }
+
+    const spanMs = next.asOf.getTime() - previous.asOf.getTime();
+    if (!Number.isFinite(spanMs) || spanMs <= 0) {
+      return null;
+    }
+
+    const ratePerMs = (nextValue - prevValue) / spanMs;
+    if (!Number.isFinite(ratePerMs) || ratePerMs === 0) {
+      return null;
+    }
+
+    const nowMs = now.getTime();
+    const tRaw = (nowMs - previous.asOf.getTime()) / spanMs;
+    const t = Math.max(0, Math.min(1, tRaw));
+    const current = prevValue + (nextValue - prevValue) * t;
+
+    const step = ILLUMINATION_STEP_PCT;
+    const direction = ratePerMs > 0 ? 1 : -1;
+    const scaled = current / step;
+    const nextBucket = direction > 0 ? Math.ceil(scaled) : Math.floor(scaled);
+    let target = nextBucket * step;
+
+    if (Math.abs(target - current) < step / 2) {
+      target += direction * step;
+    }
+
+    if (direction > 0) {
+      target = Math.min(target, Math.max(prevValue, nextValue));
+    } else {
+      target = Math.max(target, Math.min(prevValue, nextValue));
+    }
+
+    const delta = target - current;
+    if (delta === 0) {
+      return null;
+    }
+
+    const delayMs = delta / ratePerMs;
+    if (!Number.isFinite(delayMs) || delayMs <= 0) {
+      return null;
+    }
+
+    return Math.max(50, delayMs);
+  };
+
   const updateIllumination = useCallback(async () => {
     const now = new Date();
     let window = illumWindowRef.current;
@@ -157,7 +276,28 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     const illumPct = computeIlluminationPct(now, window);
     illumPctRef.current = illumPct;
     setPercentage(formatPercentage(illumPct));
+    return computeIlluminationNextDelayMs(now, window) ?? ILLUMINATION_IDLE_REFRESH_MS;
   }, [loadIlluminationWindow]);
+
+  const updateDistance = useCallback(async () => {
+    const now = new Date();
+    let window = distanceWindowRef.current;
+    const previous = window?.previous ?? null;
+    const next = window?.next ?? null;
+    const needsRefresh =
+      !previous ||
+      !next ||
+      now.getTime() < previous.asOf.getTime() ||
+      now.getTime() > next.asOf.getTime();
+
+    if (needsRefresh) {
+      await loadDistanceWindow(now);
+      window = distanceWindowRef.current;
+    }
+
+    const distanceKm = computeDistanceKm(now, window);
+    setDistanceLabel(formatDistanceKmLabel(distanceKm));
+  }, [loadDistanceWindow]);
 
   const updateDerivedLabels = useCallback(() => {
     const now = new Date();
@@ -199,18 +339,18 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     setSyncing(true);
     try {
       const targetDate = new Date();
-      const [msSnapshot, cycleBounds, canoniqueSnapshot, illumWindow] = await Promise.all([
+      const [msSnapshot, newMoonWindow, distanceWindow, illumWindow] = await Promise.all([
         fetchMsMappingSnapshot(targetDate),
-        fetchMsMappingCycleBoundsUtc(targetDate),
-        fetchCanoniqueDistanceSnapshot(targetDate),
+        fetchMsMappingNewMoonWindow(targetDate),
+        fetchCanoniqueDistanceWindow(targetDate),
         fetchCanoniqueIlluminationWindow(targetDate),
       ]);
 
-      lastNewMoonRef.current = cycleBounds.start;
-      nextNewMoonRef.current = cycleBounds.end;
+      lastNewMoonRef.current = newMoonWindow.previous;
+      nextNewMoonRef.current = newMoonWindow.next;
       cycleIndexRef.current = await fetchMsMappingYearCycleIndex({
         targetDate,
-        currentCycleStart: cycleBounds.start,
+        currentCycleStart: newMoonWindow.previous,
       });
       illumPctRef.current = msSnapshot?.illuminationPct ?? null;
       phaseDegRef.current = msSnapshot?.phaseDeg ?? null;
@@ -219,16 +359,16 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
       const illumPct = computeIlluminationPct(targetDate, illumWindow);
       illumPctRef.current = illumPct;
       setPercentage(formatPercentage(illumPct));
-      setDistanceLabel(formatDistanceKmLabelFromAu(canoniqueSnapshot?.distAu ?? null));
-      const previousWindow = formatNewMoonWindowParts(cycleBounds.start);
-      const nextWindow = formatNewMoonWindowParts(cycleBounds.end);
+      distanceWindowRef.current = distanceWindow;
+      const distanceKm = computeDistanceKm(targetDate, distanceWindow);
+      setDistanceLabel(formatDistanceKmLabel(distanceKm));
+      const previousWindow = formatNewMoonWindowParts(newMoonWindow.previous);
+      const nextWindow = formatNewMoonWindowParts(newMoonWindow.next);
       setPreviousNewMoonDayLabel(previousWindow?.dayLabel);
       setPreviousNewMoonTimeLabel(previousWindow?.timeLabel);
       setNextNewMoonDayLabel(nextWindow?.dayLabel);
       setNextNewMoonTimeLabel(nextWindow?.timeLabel);
       setNextNewMoonLabel(nextWindow ? `${nextWindow.dayLabel} ${nextWindow.timeLabel}` : undefined);
-      setCycleStartDateLabel(previousWindow ? `${previousWindow.dayLabel} ${previousWindow.timeLabel}` : undefined);
-      setCycleEndDateLabel(nextWindow ? `${nextWindow.dayLabel} ${nextWindow.timeLabel}` : undefined);
       setAsOfDate(new Date());
 
       updateDerivedLabels();
@@ -244,49 +384,107 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     await loadMoonData();
   }, [loadMoonData]);
 
-  useEffect(() => {
-    void loadMoonData();
-  }, [loadMoonData]);
+  const tickDerivedLabels = useCallback(async () => {
+    const nowMs = Date.now();
+    const nextNewMoon = nextNewMoonRef.current;
+    const lastNewMoon = lastNewMoonRef.current;
+    const sameLocalDay =
+      nextNewMoon &&
+      (() => {
+        const now = new Date(nowMs);
+        return (
+          nextNewMoon.getFullYear() === now.getFullYear() &&
+          nextNewMoon.getMonth() === now.getMonth() &&
+          nextNewMoon.getDate() === now.getDate()
+        );
+      })();
 
-  useEffect(() => {
-    void updateIllumination();
-    const interval = setInterval(() => {
-      void updateIllumination();
-    }, 5000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [updateIllumination]);
-
-  useEffect(() => {
-    updateDerivedLabels();
-    if (refreshMs > 0) {
-      const interval = setInterval(() => {
-        updateDerivedLabels();
-        const nowMs = Date.now();
-        const nextNewMoon = nextNewMoonRef.current;
-        const lastNewMoon = lastNewMoonRef.current;
-        const sameLocalDay =
-          nextNewMoon &&
-          (() => {
-            const now = new Date(nowMs);
-            return (
-              nextNewMoon.getFullYear() === now.getFullYear() &&
-              nextNewMoon.getMonth() === now.getMonth() &&
-              nextNewMoon.getDate() === now.getDate()
-            );
-          })();
-        if (!lastNewMoon || (nextNewMoon && nowMs >= nextNewMoon.getTime() && !sameLocalDay)) {
-          void loadMoonData();
-        }
-      }, refreshMs);
-
-      return () => {
-        clearInterval(interval);
-      };
+    if (!lastNewMoon || (nextNewMoon && nowMs >= nextNewMoon.getTime() && !sameLocalDay)) {
+      await loadMoonData();
+      return;
     }
-  }, [loadMoonData, refreshMs, updateDerivedLabels]);
+
+    updateDerivedLabels();
+  }, [loadMoonData, updateDerivedLabels]);
+
+  const derivedActiveJob = useMemo(
+    () => ({
+      id: 'home-moon-derived-active',
+      run: tickDerivedLabels,
+      defaultDelayMs: refreshMs,
+      minDelayMs: 250,
+      maxDelayMs: 10_000,
+    }),
+    [refreshMs, tickDerivedLabels]
+  );
+
+  const derivedIdleJob = useMemo(
+    () => ({
+      id: 'home-moon-derived-idle',
+      run: tickDerivedLabels,
+      defaultDelayMs: DERIVED_IDLE_REFRESH_MS,
+      minDelayMs: 60_000,
+      maxDelayMs: DERIVED_IDLE_REFRESH_MS,
+    }),
+    [tickDerivedLabels]
+  );
+
+  const illumActiveJob = useMemo(
+    () => ({
+      id: 'home-moon-illumination-active',
+      run: updateIllumination,
+      defaultDelayMs: 1000,
+      minDelayMs: 50,
+      maxDelayMs: 10_000,
+    }),
+    [updateIllumination]
+  );
+
+  const illumIdleJob = useMemo(
+    () => ({
+      id: 'home-moon-illumination-idle',
+      run: async () => {
+        await updateIllumination();
+        return ILLUMINATION_IDLE_REFRESH_MS;
+      },
+      defaultDelayMs: ILLUMINATION_IDLE_REFRESH_MS,
+      minDelayMs: 60_000,
+      maxDelayMs: ILLUMINATION_IDLE_REFRESH_MS,
+    }),
+    [updateIllumination]
+  );
+
+  const distanceJob = useMemo(
+    () => ({
+      id: 'home-moon-distance',
+      run: updateDistance,
+      defaultDelayMs: DISTANCE_REFRESH_MS,
+      minDelayMs: 1000,
+      maxDelayMs: 60_000,
+    }),
+    [updateDistance]
+  );
+
+  const distanceWindowJob = useMemo(
+    () => ({
+      id: 'home-moon-distance-window',
+      run: async () => {
+        await loadDistanceWindow(new Date());
+        return DISTANCE_WINDOW_REFRESH_MS;
+      },
+      defaultDelayMs: DISTANCE_WINDOW_REFRESH_MS,
+      minDelayMs: 60_000,
+      maxDelayMs: DISTANCE_WINDOW_REFRESH_MS,
+    }),
+    [loadDistanceWindow]
+  );
+
+  useAdaptivePollingJob(derivedActiveJob, isFocused);
+  useAdaptivePollingJob(derivedIdleJob, !isFocused);
+  useAdaptivePollingJob(illumActiveJob, isFocused);
+  useAdaptivePollingJob(illumIdleJob, !isFocused);
+  useAdaptivePollingJob(distanceJob, isFocused);
+  useAdaptivePollingJob(distanceWindowJob, isFocused);
 
   const asOfLabel = formatAsOfLabel(asOfDate);
 
@@ -299,8 +497,6 @@ export function useHomeMoon(options: HomeMoonOptions = {}): HomeMoonState {
     ageLabel,
     moonImageSource,
     cycleEndLabel,
-    cycleStartDateLabel,
-    cycleEndDateLabel,
     distanceLabel,
     previousNewMoonDayLabel,
     previousNewMoonTimeLabel,

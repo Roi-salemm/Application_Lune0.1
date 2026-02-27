@@ -9,6 +9,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { ThemedText } from '@/components/shared/themed-text';
 import { withAlpha } from '@/constants/theme';
 import { phaseLabelToIndex } from '@/features/home/domain/astronomie-phases';
+import { BlurCard } from '@/features/home/ui/components/blur-card';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { ASTRONOMIE_CARD_HEIGHT } from '@/features/home/ui/astronomie/astronomie-card-dimensions';
 
@@ -91,8 +92,6 @@ export function AstronomieCard1({
   nextNewMoonTimeLabel,
   phaseLabel,
 }: AstronomieCard1Props) {
-  const surface = useThemeColor({}, 'surface');
-  const border = useThemeColor({}, 'border');
   const text = useThemeColor({}, 'text');
   const action = useThemeColor({}, 'btn-action');
   const ageValue = ageLabel?.trim() ? ageLabel : '...';
@@ -209,7 +208,7 @@ export function AstronomieCard1({
   };
 
   return (
-    <View style={[styles.card, { borderColor: border, backgroundColor: surface }]} testID="astronomie_card_1">
+    <BlurCard style={styles.card} variant="astronomie-primary" testID="astronomie_card_1">
       <View style={styles.imageArea} onLayout={handleImageLayout}>
         {moonStyles.length
           ? MOON_ASSETS.map((asset, index) => renderMoon(asset, index))
@@ -254,7 +253,7 @@ export function AstronomieCard1({
           </ThemedText>
         </View>
       </View>
-    </View>
+    </BlurCard>
   );
 }
 

@@ -8,7 +8,8 @@ import Svg, { Ellipse } from 'react-native-svg';
 
 import { ThemedText } from '@/components/shared/themed-text';
 import { withAlpha } from '@/constants/theme';
-import { useAstronomieOrbit } from '@/features/home/features/use-astronomie-orbit';
+import { useAstronomieOrbit } from '@/features/home/hooks/use-astronomie-orbit';
+import { BlurCard } from '@/features/home/ui/components/blur-card';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { ASTRONOMIE_CARD_HEIGHT } from '@/features/home/ui/astronomie/astronomie-card-dimensions';
 import MoonPhase from '../../../../assets/graphisme/p2_permier_quartier.svg';
@@ -62,16 +63,15 @@ function resolveSvgAsset(asset: unknown): SvgResolved {
 
 export type AstronomieCard2Props = {
   distanceGeocentricLabel?: string;
+  isActive?: boolean;
 };
 
-export function AstronomieCard2({ distanceGeocentricLabel }: AstronomieCard2Props) {
-  const surface = useThemeColor({}, 'surface');
-  const border = useThemeColor({}, 'border');
+export function AstronomieCard2({ distanceGeocentricLabel, isActive = true }: AstronomieCard2Props) {
   const text = useThemeColor({}, 'text');
   const earth = useThemeColor({}, 'earth');
   const orbitColor = withAlpha(text, 0.6);
   const [orbitLayout, setOrbitLayout] = useState({ width: 216, height: 108 });
-  const { angleRad } = useAstronomieOrbit();
+  const { angleRad } = useAstronomieOrbit({ isActive });
   const [debugAngleRad, setDebugAngleRad] = useState<number | null>(null);
   const orbitRxRatio = 100.8 / 216;
   const orbitRyRatio = 36 / 108;
@@ -134,7 +134,7 @@ export function AstronomieCard2({ distanceGeocentricLabel }: AstronomieCard2Prop
   const topocentricValue = '...';
 
   return (
-    <View style={[styles.card, { borderColor: border, backgroundColor: surface }]} testID="astronomie_card_2">
+    <BlurCard style={styles.card} variant="astronomie-primary" testID="astronomie_card_2">
       <View style={styles.orbitArea}>
         <View style={styles.orbitLayer} onLayout={handleOrbitLayout}>
           <Svg style={styles.orbitSvg} viewBox={`0 0 ${orbitLayout.width} ${orbitLayout.height}`}>
@@ -161,7 +161,7 @@ export function AstronomieCard2({ distanceGeocentricLabel }: AstronomieCard2Prop
           Distance Terre-Lune (Topocentrique) : {topocentricValue}
         </ThemedText>
       </View>
-    </View>
+    </BlurCard>
   );
 }
 

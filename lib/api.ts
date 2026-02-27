@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const FALLBACK_API_BASE_URL = 'http://localhost:8000';
+const FALLBACK_API_BASE_URL = 'http://localhost:8080';
 
 function extractHost(hostUri?: string | null) {
   if (!hostUri) {
@@ -16,7 +16,7 @@ function extractHost(hostUri?: string | null) {
 function resolveLocalApiBase() {
   const win = typeof globalThis !== 'undefined' ? (globalThis as any).window : undefined;
   if (Platform.OS === 'web' && win?.location) {
-    return `${win.location.protocol}//${win.location.hostname}:8000`;
+    return `${win.location.protocol}//${win.location.hostname}:8080`;
   }
 
   const hostUri =
@@ -26,7 +26,7 @@ function resolveLocalApiBase() {
     null;
   const host = extractHost(hostUri);
   if (host) {
-    return `http://${host}:8000`;
+    return `http://${host}:8080`;
   }
 
   return FALLBACK_API_BASE_URL;

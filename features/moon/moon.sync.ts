@@ -15,7 +15,6 @@ import {
   getMsMappingRange,
   initMoonDb,
   pruneMoonCanoniqueOutsideRange,
-  pruneMsMappingOutsideRange,
   upsertMoonCanoniqueRows,
   upsertMsMappingRows,
 } from '@/features/moon/moon-db';
@@ -86,8 +85,10 @@ function buildCanoniqueRangeUtc(now = new Date(), days = 45) {
 }
 
 function buildMsMappingRangeUtc(now = new Date()) {
-  const start = new Date(Date.UTC(now.getUTCFullYear() - 2, 0, 1, 0, 0, 0));
-  const end = new Date(Date.UTC(now.getUTCFullYear() + 7, 11, 31, 23, 59, 59));
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month + 2, 0, 23, 59, 59));
 
   return {
     start: formatSqlUtc(start),
@@ -118,30 +119,6 @@ function isMsMappingRangeCovered(
 }
 
 function buildCanoniqueMissingSegments(
-  rangeStart: string,
-  rangeEnd: string,
-  existing: { min_ts: string | null; max_ts: string | null; cnt: number }
-) {
-  if (!existing.cnt || !existing.min_ts || !existing.max_ts) {
-    return [{ start: rangeStart, end: rangeEnd }];
-  }
-
-  if (existing.max_ts < rangeStart || existing.min_ts > rangeEnd) {
-    return [{ start: rangeStart, end: rangeEnd }];
-  }
-
-  const segments: Array<{ start: string; end: string }> = [];
-  if (existing.min_ts > rangeStart) {
-    segments.push({ start: rangeStart, end: existing.min_ts });
-  }
-  if (existing.max_ts < rangeEnd) {
-    segments.push({ start: existing.max_ts, end: rangeEnd });
-  }
-
-  return segments;
-}
-
-function buildMsMappingMissingSegments(
   rangeStart: string,
   rangeEnd: string,
   existing: { min_ts: string | null; max_ts: string | null; cnt: number }
@@ -235,27 +212,21 @@ export async function syncMoonMsMappingData(
     };
   }
 
-  let fetched = 0;
-  const segments = buildMsMappingMissingSegments(range.start, range.end, existing);
-
-  for (const segment of segments) {
-    const response = await fetchMoonMsMappingRange(segment.start, segment.end, signal);
-    const payload = response as MoonMsMappingResponse;
-    if (!Array.isArray(payload.items)) {
-      throw new Error('Moon ms_mapping payload missing items array');
-    }
-    if (payload.items.length) {
-      await upsertMsMappingRows(db, payload.items);
-      fetched += payload.items.length;
-    }
+  const response = await fetchMoonMsMappingRange(range.start, range.end, signal);
+  const payload = response as MoonMsMappingResponse;
+  if (!Array.isArray(payload.items)) {
+    throw new Error('Moon ms_mapping payload missing items array');
   }
 
-  await pruneMsMappingOutsideRange(db, range.start, range.end);
+  await db.runAsync('DELETE FROM ms_mapping');
+  if (payload.items.length) {
+    await upsertMsMappingRows(db, payload.items);
+  }
   const updated = await getMsMappingRange(db);
 
   return {
     ready: isMsMappingRangeCovered(range.start, range.end, updated),
-    fetched,
+    fetched: payload.items.length,
     rangeStart: range.start,
     rangeEnd: range.end,
     skipped: false,

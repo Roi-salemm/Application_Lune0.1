@@ -1,12 +1,17 @@
 // Hook home : charge et rafraichit les donnees astro quotidiennes.
 // Pourquoi : centraliser la logique de refresh pour garder l'UI declarative.
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type { MoonCard1Tropical } from '@/features/home/ui/moon-card-1-tropical';
 import { buildMoonCard1Tropical } from '@/features/moon/domain/moon-tropical';
+import { useAdaptivePollingJob } from '@/features/moon/orchestration/adaptive-polling';
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const SIXTY_MINUTES_MS = 60 * 60 * 1000;
+
+type AstroDailyOptions = {
+  isActive?: boolean;
+};
 
 function parseIsoDate(value: string | null | undefined) {
   if (!value || value === '...') {
@@ -49,43 +54,30 @@ function computeNextRefreshMs(now: Date, card: MoonCard1Tropical | null) {
   return Math.max(30 * 1000, Math.min(...candidates));
 }
 
-export function useAstroDaily() {
+export function useAstroDaily(options: AstroDailyOptions = {}) {
+  const isActive = options.isActive ?? true;
   const [moonCard, setMoonCard] = useState<MoonCard1Tropical | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-
-    const load = async () => {
-      try {
-        const card = await buildMoonCard1Tropical(new Date());
-        if (!cancelled) {
-          setMoonCard(card);
-          if (timeout) {
-            clearTimeout(timeout);
-          }
-          const delay = computeNextRefreshMs(new Date(), card);
-          timeout = setTimeout(load, delay);
-        }
-      } catch {
-        if (!cancelled) {
-          if (timeout) {
-            clearTimeout(timeout);
-          }
-          timeout = setTimeout(load, SIXTY_MINUTES_MS);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      cancelled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-    };
+  const load = useCallback(async () => {
+    const now = new Date();
+    const card = await buildMoonCard1Tropical(now);
+    setMoonCard(card);
+    return computeNextRefreshMs(now, card);
   }, []);
+
+  const job = useMemo(
+    () => ({
+      id: 'home-astro-daily',
+      run: load,
+      defaultDelayMs: SIXTY_MINUTES_MS,
+      minDelayMs: 30 * 1000,
+      maxDelayMs: SIXTY_MINUTES_MS,
+      errorDelayMs: SIXTY_MINUTES_MS,
+    }),
+    [load]
+  );
+
+  useAdaptivePollingJob(job, isActive);
 
   return { moonCard };
 }

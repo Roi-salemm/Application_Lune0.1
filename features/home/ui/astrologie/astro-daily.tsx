@@ -11,7 +11,8 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/shared/themed-text';
-import { useAstroDaily } from '@/features/home/features/use-astro-daily';
+import { useAstroDaily } from '@/features/home/hooks/use-astro-daily';
+import { BlurCard } from '@/features/home/ui/components/blur-card';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { formatTimeValue } from '@/features/calendar/domain/CalendarDateUtils';
 
@@ -60,12 +61,15 @@ function formatLocalDateTime(value: string | null | undefined) {
   return `${weekday} ${day}, ${formatTimeValue(date)}`;
 }
 
-export function AstroDailyCard() {
-  const surface = useThemeColor({}, 'surface');
+type AstroDailyCardProps = {
+  isActive?: boolean;
+};
+
+export function AstroDailyCard({ isActive = true }: AstroDailyCardProps) {
   const border = useThemeColor({}, 'border');
   const title = useThemeColor({}, 'title');
   const text = useThemeColor({}, 'text');
-  const { moonCard } = useAstroDaily();
+  const { moonCard } = useAstroDaily({ isActive });
 
   const signIndexRaw = typeof moonCard?.sign_index === 'number' ? moonCard.sign_index : Number.NaN;
   const signIndex = Number.isFinite(signIndexRaw)
@@ -88,7 +92,7 @@ export function AstroDailyCard() {
   );
 
   return (
-    <View style={[styles.card, { borderColor: border, backgroundColor: surface }]} testID="astro_daily">
+    <BlurCard style={styles.card} variant="astro-daily" testID="astro_daily">
       <View style={styles.topRow}>
         <View style={styles.topColumn}>
           <ThemedText style={styles.topGlyph} colorName="title">
@@ -134,7 +138,7 @@ export function AstroDailyCard() {
       <ThemedText style={styles.watermark} lightColor={text} darkColor={text}>
         {signGlyph}
       </ThemedText>
-    </View>
+    </BlurCard>
   );
 }
 

@@ -2,25 +2,26 @@
 // Pourquoi : garder un point d'entree simple et deleguer chaque bloc a un composant dedie.
 import { useCallback, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 
 import { ThemedView } from '@/components/shared/themed-view';
 import { FeatureSectionList } from '@/core/feature-flags/feature-renderer';
 import { MoonPhaseHeader } from '@/features/home/components/moon-phase-header';
 import { HomeDebugControls } from '@/features/home/features/home-debug-controls';
-import { useHomeMoon } from '@/features/home/features/use-home-moon';
+import { useHomeMoon } from '@/features/home/hooks/use-home-moon';
 import { HOME_REGISTRY } from '@/features/home/registry';
 import { AstronomieCarousel } from '@/features/home/ui/astronomie/astronomie-carousel';
-import { AstroDailyCard } from '@/features/home/ui/sections/astro-daily';
-import { AstronomicDataHero } from '@/features/home/ui/sections/astronomic-data-hero';
-import { MoonDailyCard } from '@/features/home/ui/sections/moon-daily';
+import { PresentationCarousel } from '@/features/home/ui/presentation/presentation-carousel';
+import { AstroDailyCard } from '@/features/home/ui/astrologie/astro-daily';
+import { MoonDailyCard } from '@/features/home/ui/symbolisme/moon-daily';
 
 const HOME_CONTENT_REGISTRY = HOME_REGISTRY.filter((item) => item.id !== 'home.debug-sqlite');
-
 export default function HomeScreen() {
   const [headerHeight, setHeaderHeight] = useState(260);
   const [heroInteractive, setHeroInteractive] = useState(true);
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastHeroInteractive = useRef(true);
+  const isFocused = useIsFocused();
   const handleHeaderLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
     const nextHeight = event.nativeEvent.layout.height;
     if (Number.isFinite(nextHeight) && nextHeight > 0) {
@@ -46,20 +47,13 @@ export default function HomeScreen() {
     phaseLabel,
     ageLabel,
     moonImageSource,
-    cycleEndLabel,
-    cycleStartDateLabel,
-    cycleEndDateLabel,
     distanceLabel,
-    visibleInLabel,
-    setInLabel,
-    altitudeLabel,
-    azimuthLabel,
     previousNewMoonDayLabel,
     previousNewMoonTimeLabel,
     nextNewMoonDayLabel,
     nextNewMoonTimeLabel,
     nextNewMoonRemainingLabel,
-  } = useHomeMoon();
+  } = useHomeMoon({ isActive: isFocused });
   const overlayOpacity = scrollY.interpolate({
     inputRange: [0, 220],
     outputRange: [0, 1],
@@ -93,17 +87,9 @@ export default function HomeScreen() {
         })}
         scrollEventThrottle={16}>
         <View style={styles.details}>
-          <AstronomicDataHero
-            ageLabel={ageLabel}
-            cycleEndLabel={cycleEndLabel}
-            cycleStartDateLabel={cycleStartDateLabel}
-            cycleEndDateLabel={cycleEndDateLabel}
-            distanceLabel={distanceLabel}
-            visibleInLabel={visibleInLabel}
-            setInLabel={setInLabel}
-            altitudeLabel={altitudeLabel}
-            azimuthLabel={azimuthLabel}
-          />
+          <View style={styles.presentationSection}>
+            <PresentationCarousel />
+          </View>
           <View style={styles.astronomieSection}>
             <AstronomieCarousel
               ageLabel={ageLabel}
@@ -114,13 +100,14 @@ export default function HomeScreen() {
               nextNewMoonTimeLabel={nextNewMoonTimeLabel}
               distanceGeocentricLabel={distanceLabel}
               phaseLabel={phaseLabel}
+              isActive={isFocused}
             />
           </View>
           <View style={styles.moonDaily}>
             <MoonDailyCard />
           </View>
           <View style={styles.astroDaily}>
-            <AstroDailyCard />
+            <AstroDailyCard isActive={isFocused} />
           </View>
         </View>
         <View style={styles.content}>
@@ -144,9 +131,6 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     zIndex: 0,
   },
-  heroInteractive: {
-    zIndex: 3,
-  },
   overlay: {
     position: 'absolute',
     left: 0,
@@ -155,6 +139,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#000',
     zIndex: 1,
+  },
+  heroInteractive: {
+    zIndex: 3,
   },
   scroll: {
     zIndex: 2,
@@ -165,6 +152,9 @@ const styles = StyleSheet.create({
   details: {
     paddingTop: 18,
     paddingHorizontal: 24,
+  },
+  presentationSection: {
+    marginTop: 18,
   },
   astroDaily: {
     marginTop: 18,
@@ -181,3 +171,5 @@ const styles = StyleSheet.create({
     paddingTop: 28,
   },
 });
+
+

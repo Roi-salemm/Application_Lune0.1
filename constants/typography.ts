@@ -18,7 +18,7 @@ export const TYPO = {
   },
   texte: {
     fontSize: 15.5,
-    lineHeight: 24,
+    lineHeight: 22,
     fontWeight: '400',
   },
   petitTexte: {

@@ -1,19 +1,23 @@
 // Ecran debug SQLite avec liste des tables et rafraichissement.
 // Pourquoi : diagnostiquer rapidement l'etat de la base embarquee.
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 
 import { ThemedText } from '@/components/shared/themed-text';
 import { ThemedView } from '@/components/shared/themed-view';
 import { withAlpha } from '@/constants/theme';
+import type { AppCardRow } from '@/features/content/app-cards.types';
+import { syncAppCards } from '@/features/content/app-cards.sync';
+import { deleteAppCardById, getAllCardsForDebug, initAppCardsDb } from '@/features/content/data/app-cards-db';
 import { useSQLiteDebug } from '@/features/debug/use-sqlite-debug';
+import { useHomeMoon } from '@/features/home/hooks/use-home-moon';
 import type { MoonCard1Tropical } from '@/features/home/ui/moon-card-1-tropical';
 import { formatLocalDayKey } from '@/features/moon/data/moon-sql-utils';
 import { buildMoonCard1Tropical } from '@/features/moon/domain/moon-tropical';
 import {
-  fetchMsMappingCycleBoundsUtc,
   fetchMsMappingLocalDayRow,
-  fetchMsMappingPhaseHourDiagnostics,
+  fetchMsMappingNewMoonWindow,
 } from '@/features/moon/data/moon-ms-mapping-data';
 import { syncMoonCanoniqueData, syncMoonMsMappingData } from '@/features/moon/moon.sync';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -26,18 +30,30 @@ export default function DebugScreen() {
   const [moonCard, setMoonCard] = useState<MoonCard1Tropical | null>(null);
   const [moonCardError, setMoonCardError] = useState<string | null>(null);
   const [moonCardLoading, setMoonCardLoading] = useState<boolean>(false);
+  const [appCards, setAppCards] = useState<AppCardRow[]>([]);
+  const [appCardsLoading, setAppCardsLoading] = useState(false);
+  const [appCardsError, setAppCardsError] = useState<string | null>(null);
+  const [syncingAppCards, setSyncingAppCards] = useState(false);
+  const [deletingAppCardId, setDeletingAppCardId] = useState<string | null>(null);
+  const [appCardModal, setAppCardModal] = useState<AppCardRow | null>(null);
   const [msMappingDebug, setMsMappingDebug] = useState<{
     dayKey: string;
     row: Awaited<ReturnType<typeof fetchMsMappingLocalDayRow>>;
-    cycleStart: Date | null;
-    cycleEnd: Date | null;
-    invalidPhaseHourCount: number;
-    totalPhaseHourCount: number;
-    invalidPhaseHourSamples: string[];
-    feb17PhaseHour: string | null;
+    windowPrevious: Date | null;
+    windowNext: Date | null;
   } | null>(null);
   const [msMappingDebugLoading, setMsMappingDebugLoading] = useState(false);
   const [msMappingDebugError, setMsMappingDebugError] = useState<string | null>(null);
+  const isFocused = useIsFocused();
+  const {
+    ageLabel,
+    cycleEndLabel,
+    distanceLabel,
+    visibleInLabel,
+    setInLabel,
+    altitudeLabel,
+    azimuthLabel,
+  } = useHomeMoon({ isActive: isFocused });
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
   const text = useThemeColor({}, 'text');
@@ -47,6 +63,26 @@ export default function DebugScreen() {
   const tableCardBg = withAlpha(surface, 0.55);
   const tableHeaderBg = withAlpha(border, 0.2);
   const moonCardBg = withAlpha(surface, 0.7);
+  const modalOverlayBg = withAlpha(border, 0.75);
+  const appCardJson = appCardModal ? JSON.stringify(appCardModal, null, 2) : '';
+  const appCardsTable = tables.find((table) => table.name === 'app_card');
+  const appCardsCount =
+    appCardsTable?.count ?? (!appCardsLoading && !appCardsError ? appCards.length : null);
+  const appCardsCountLabel = appCardsCount === null ? '...' : `${appCardsCount} cards en cache`;
+
+  const loadAppCardsDebug = useCallback(async () => {
+    setAppCardsLoading(true);
+    setAppCardsError(null);
+    try {
+      await initAppCardsDb();
+      const rows = await getAllCardsForDebug();
+      setAppCards(rows);
+    } catch (err) {
+      setAppCardsError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setAppCardsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +114,10 @@ export default function DebugScreen() {
   }, [tables]);
 
   useEffect(() => {
+    void loadAppCardsDebug();
+  }, [loadAppCardsDebug, tables]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadMsMappingDebug = async () => {
@@ -86,22 +126,17 @@ export default function DebugScreen() {
       try {
         const now = new Date();
         const dayKey = formatLocalDayKey(now);
-        const [row, cycleBounds, diagnostics] = await Promise.all([
+        const [row, newMoonWindow] = await Promise.all([
           fetchMsMappingLocalDayRow(now),
-          fetchMsMappingCycleBoundsUtc(now),
-          fetchMsMappingPhaseHourDiagnostics(),
+          fetchMsMappingNewMoonWindow(now),
         ]);
 
         if (!cancelled) {
           setMsMappingDebug({
             dayKey,
             row,
-            cycleStart: cycleBounds.start,
-            cycleEnd: cycleBounds.end,
-            invalidPhaseHourCount: diagnostics.invalidCount,
-            totalPhaseHourCount: diagnostics.totalCount,
-            invalidPhaseHourSamples: diagnostics.invalidSamples.map((item) => item.phase_hour ?? '...'),
-            feb17PhaseHour: diagnostics.feb17Row?.phase_hour ?? null,
+            windowPrevious: newMoonWindow.previous,
+            windowNext: newMoonWindow.next,
           });
         }
       } catch (err) {
@@ -167,6 +202,16 @@ export default function DebugScreen() {
       ]
     : [];
 
+  const debugLabelEntries = [
+    { key: 'Age de la lunaison', value: ageLabel },
+    { key: 'prochain cycle', value: cycleEndLabel },
+    { key: 'Distance', value: distanceLabel },
+    { key: 'Visible dans', value: visibleInLabel },
+    { key: 'Coucher dans', value: setInLabel },
+    { key: 'Altitude', value: altitudeLabel },
+    { key: 'Azimut', value: azimuthLabel },
+  ];
+
   const handleClearTable = (tableName: string) => {
     Alert.alert(
       'Vider la table ?',
@@ -191,12 +236,28 @@ export default function DebugScreen() {
     setSyncingTable(tableName);
     try {
       if (tableName === 'ms_mapping') {
-        await syncMoonMsMappingData();
+        await syncMoonMsMappingData({ force: true });
       }
     } catch (err) {
       Alert.alert('Erreur', err instanceof Error ? err.message : 'Sync ms_mapping impossible.');
     } finally {
       setSyncingTable(null);
+      refresh();
+    }
+  };
+
+  const handleSyncAppCards = async () => {
+    if (syncingAppCards) {
+      return;
+    }
+    setSyncingAppCards(true);
+    try {
+      await syncAppCards({ force: true });
+    } catch (err) {
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Sync app cards impossible.');
+    } finally {
+      setSyncingAppCards(false);
+      await loadAppCardsDebug();
       refresh();
     }
   };
@@ -214,6 +275,43 @@ export default function DebugScreen() {
     } finally {
       setClearingTable(null);
     }
+  };
+
+  const confirmDeleteAppCard = async (cardId: string) => {
+    if (deletingAppCardId) {
+      return;
+    }
+    setDeletingAppCardId(cardId);
+    try {
+      await deleteAppCardById(cardId);
+    } catch (err) {
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Suppression impossible.');
+    } finally {
+      setDeletingAppCardId(null);
+      await loadAppCardsDebug();
+      refresh();
+    }
+  };
+
+  const handleDeleteAppCard = (cardId: string) => {
+    Alert.alert(
+      'Supprimer la card ?',
+      `Cette action supprimera la card ${cardId} de la base locale.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            void confirmDeleteAppCard(cardId);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleShowAppCardJson = (card: AppCardRow) => {
+    setAppCardModal(card);
   };
 
   const handleRefresh = async () => {
@@ -262,6 +360,148 @@ export default function DebugScreen() {
             {error}
           </ThemedText>
         ) : null}
+        <ThemedView style={[styles.tableCard, { backgroundColor: tableCardBg }]}>
+          <View style={styles.tableHeader}>
+            <ThemedText type="title" style={styles.tableTitle}>
+              App Cards (cache)
+            </ThemedText>
+            <Pressable
+              onPress={handleSyncAppCards}
+              disabled={syncingAppCards}
+              style={[
+                styles.clearButton,
+                { borderColor: action },
+                syncingAppCards && styles.clearButtonDisabled,
+              ]}>
+              <ThemedText type="default" style={[styles.clearButtonText, { color: action }]}>
+                {syncingAppCards ? 'Sync...' : 'Synchronisation'}
+              </ThemedText>
+            </Pressable>
+          </View>
+          <ThemedText type="default" style={styles.tableMeta}>
+            {appCardsCountLabel}
+          </ThemedText>
+          {appCardsLoading ? <ThemedText type="default">Chargement...</ThemedText> : null}
+          {appCardsError ? (
+            <ThemedText type="default" style={styles.errorText} lightColor={action} darkColor={action}>
+              {appCardsError}
+            </ThemedText>
+          ) : null}
+          {!appCardsLoading && !appCardsError && appCards.length ? (
+            <FlatList
+              data={appCards}
+              scrollEnabled={false}
+              keyExtractor={(item) => item.id}
+              ListHeaderComponent={
+                <View style={[styles.appCardsRow, styles.appCardsHeader, { backgroundColor: tableHeaderBg }]}>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellId, styles.appCardsHeaderText]}>
+                    id
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellTitle, styles.appCardsHeaderText]}>
+                    title
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellRank, styles.appCardsHeaderText]}>
+                    rank
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellDate, styles.appCardsHeaderText]}>
+                    updatedAt
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellDate, styles.appCardsHeaderText]}>
+                    fetchedAt
+                  </ThemedText>
+                  <View style={styles.appCardsCellAction} />
+                </View>
+              }
+              renderItem={({ item }) => (
+                <Pressable style={styles.appCardsRow} onPress={() => handleShowAppCardJson(item)}>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellId]}
+                    numberOfLines={1}>
+                    {item.id}
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellTitle]}
+                    numberOfLines={1}>
+                    {item.title}
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellRank]}
+                    numberOfLines={1}>
+                    {item.featuredRank ?? '-'}
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellDate]}
+                    numberOfLines={1}>
+                    {item.updatedAt}
+                  </ThemedText>
+                  <ThemedText
+                    variant="petitTexte"
+                    style={[styles.appCardsCell, styles.appCardsCellDate]}
+                    numberOfLines={1}>
+                    {item.fetchedAt}
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => handleDeleteAppCard(item.id)}
+                    disabled={deletingAppCardId === item.id}
+                    style={[
+                      styles.appCardsDelete,
+                      { borderColor: action },
+                      deletingAppCardId === item.id && styles.clearButtonDisabled,
+                    ]}>
+                    <ThemedText type="default" style={[styles.clearButtonText, { color: action }]}>
+                      {deletingAppCardId === item.id ? '...' : 'Supprimer'}
+                    </ThemedText>
+                  </Pressable>
+                </Pressable>
+              )}
+            />
+          ) : null}
+          {!appCardsLoading && !appCardsError && !appCards.length ? (
+            <ThemedText type="default">Aucune donnee.</ThemedText>
+          ) : null}
+        </ThemedView>
+        <Modal
+          visible={!!appCardModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAppCardModal(null)}>
+          <View style={[styles.modalOverlay, { backgroundColor: modalOverlayBg }]}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAppCardModal(null)} />
+            <View style={[styles.modalCard, { backgroundColor: surface, borderColor: border }]}>
+              <View style={styles.modalHeader}>
+                <ThemedText type="title" style={styles.modalTitle}>
+                  App Card JSON
+                </ThemedText>
+                <Pressable
+                  onPress={() => setAppCardModal(null)}
+                  style={[styles.modalCloseButton, { borderColor: action }]}>
+                  <ThemedText type="default" style={[styles.modalCloseText, { color: action }]}>
+                    Fermer
+                  </ThemedText>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.modalContent} contentContainerStyle={styles.modalContentInner}>
+                <ThemedText type="default" style={styles.modalJson}>
+                  {appCardJson}
+                </ThemedText>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
         <ThemedView style={[styles.moonCard, { backgroundColor: moonCardBg, borderColor: border }]}>
           <ThemedText type="title" style={styles.tableTitle}>
             MoonCard1Tropical (local)
@@ -291,6 +531,23 @@ export default function DebugScreen() {
           {!moonCardLoading && !moonCardError && !moonCardEntries.length ? (
             <ThemedText type="default">Aucune donnee.</ThemedText>
           ) : null}
+        </ThemedView>
+        <ThemedView style={[styles.moonCard, { backgroundColor: moonCardBg, borderColor: border }]}>
+          <ThemedText type="title" style={styles.tableTitle}>
+            Labels astronomiques (debug)
+          </ThemedText>
+          <View style={styles.moonCardList}>
+            {debugLabelEntries.map((entry) => (
+              <View key={`debug-label-${entry.key}`} style={styles.moonCardRow}>
+                <ThemedText type="default" style={styles.moonCardKey}>
+                  {entry.key}
+                </ThemedText>
+                <ThemedText type="default" style={styles.moonCardValue}>
+                  {formatMoonCardValue(entry.value)}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
         </ThemedView>
         <ThemedView style={[styles.moonCard, { backgroundColor: moonCardBg, borderColor: border }]}>
           <ThemedText type="title" style={styles.tableTitle}>
@@ -340,50 +597,18 @@ export default function DebugScreen() {
               </View>
               <View style={styles.moonCardRow}>
                 <ThemedText type="default" style={styles.moonCardKey}>
-                  cycle_start_utc (debut cycle - requete unique)
+                  cycle_start_utc (debut cycle via fenetre)
                 </ThemedText>
-                <ThemedText
-                  type="default"
-                  style={styles.moonCardValue}
-                  lightColor="#ff4d4f"
-                  darkColor="#ff4d4f">
-                  {formatDebugValue(msMappingDebug.cycleStart)}
+                <ThemedText type="default" style={[styles.moonCardValue, { color: action }]}>
+                  {formatDebugValue(msMappingDebug.windowPrevious)}
                 </ThemedText>
               </View>
               <View style={styles.moonCardRow}>
                 <ThemedText type="default" style={styles.moonCardKey}>
-                  cycle_end_utc (fin cycle - requete unique)
+                  cycle_end_utc (fin cycle via fenetre)
                 </ThemedText>
-                <ThemedText
-                  type="default"
-                  style={styles.moonCardValue}
-                  lightColor="#ff4d4f"
-                  darkColor="#ff4d4f">
-                  {formatDebugValue(msMappingDebug.cycleEnd)}
-                </ThemedText>
-              </View>
-              <View style={styles.moonCardRow}>
-                <ThemedText type="default" style={styles.moonCardKey}>
-                  phase_hour invalides (datetime NULL)
-                </ThemedText>
-                <ThemedText type="default" style={styles.moonCardValue}>
-                  {formatDebugValue(`${msMappingDebug.invalidPhaseHourCount}/${msMappingDebug.totalPhaseHourCount}`)}
-                </ThemedText>
-              </View>
-              <View style={styles.moonCardRow}>
-                <ThemedText type="default" style={styles.moonCardKey}>
-                  invalid_samples (phase_hour)
-                </ThemedText>
-                <ThemedText type="default" style={styles.moonCardValue}>
-                  {formatDebugValue(msMappingDebug.invalidPhaseHourSamples)}
-                </ThemedText>
-              </View>
-              <View style={styles.moonCardRow}>
-                <ThemedText type="default" style={styles.moonCardKey}>
-                  2026-02-17 phase_hour (brut)
-                </ThemedText>
-                <ThemedText type="default" style={styles.moonCardValue}>
-                  {formatDebugValue(msMappingDebug.feb17PhaseHour)}
+                <ThemedText type="default" style={[styles.moonCardValue, { color: action }]}>
+                  {formatDebugValue(msMappingDebug.windowNext)}
                 </ThemedText>
               </View>
             </View>
@@ -532,6 +757,47 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 14,
   },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    maxHeight: '80%',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+  },
+  modalCloseButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  modalCloseText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalContent: {
+    flexGrow: 0,
+  },
+  modalContentInner: {
+    paddingBottom: 4,
+  },
+  modalJson: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   tableTitle: {
     fontSize: 18,
   },
@@ -565,6 +831,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 32,
+  },
+  appCardsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  appCardsHeader: {
+    marginBottom: 6,
+  },
+  appCardsHeaderText: {
+    fontWeight: '700',
+  },
+  appCardsCell: {
+    fontSize: 11,
+    flexShrink: 1,
+  },
+  appCardsCellId: {
+    width: 46,
+  },
+  appCardsCellTitle: {
+    flex: 1,
+  },
+  appCardsCellRank: {
+    width: 42,
+    textAlign: 'center',
+  },
+  appCardsCellDate: {
+    width: 110,
+  },
+  appCardsCellAction: {
+    width: 84,
+  },
+  appCardsDelete: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   headerRowTable: {
     alignItems: 'center',

@@ -15,6 +15,16 @@ export type CanoniqueDistanceSnapshot = {
   distAu: number | null;
 };
 
+export type CanoniqueDistancePoint = {
+  asOf: Date;
+  distKm: number | null;
+};
+
+export type CanoniqueDistanceWindow = {
+  previous: CanoniqueDistancePoint | null;
+  next: CanoniqueDistancePoint | null;
+};
+
 export type CanoniqueIlluminationPoint = {
   asOf: Date;
   illumFrac: number | null;
@@ -112,6 +122,34 @@ async function fetchCanoniqueRowAfter(targetUtc: string) {
   return row?.ts_utc ? row : null;
 }
 
+async function fetchCanoniqueDistanceRowBefore(targetUtc: string) {
+  const db = await initMoonDb();
+  const row = await db.getFirstAsync<CanoniqueRow>(
+    `SELECT ts_utc, m20_range_km
+     FROM canonique_data
+     WHERE ts_utc <= ?
+     ORDER BY ts_utc DESC
+     LIMIT 1`,
+    [targetUtc]
+  );
+
+  return row?.ts_utc ? row : null;
+}
+
+async function fetchCanoniqueDistanceRowAfter(targetUtc: string) {
+  const db = await initMoonDb();
+  const row = await db.getFirstAsync<CanoniqueRow>(
+    `SELECT ts_utc, m20_range_km
+     FROM canonique_data
+     WHERE ts_utc >= ?
+     ORDER BY ts_utc ASC
+     LIMIT 1`,
+    [targetUtc]
+  );
+
+  return row?.ts_utc ? row : null;
+}
+
 export async function fetchCanoniqueDistanceSnapshot(
   targetDate: Date
 ): Promise<CanoniqueDistanceSnapshot | null> {
@@ -129,6 +167,37 @@ export async function fetchCanoniqueDistanceSnapshot(
   return {
     asOf,
     distAu: toNumber(row.m20_range_km),
+  };
+}
+
+// Fenetre de distance autour d'une date (ligne precedente et suivante).
+// Pourquoi : interpoler la distance entre deux pas de 10 minutes.
+export async function fetchCanoniqueDistanceWindow(
+  targetDate: Date
+): Promise<CanoniqueDistanceWindow> {
+  const targetUtc = formatSqlUtc(targetDate);
+  const [previousRow, nextRow] = await Promise.all([
+    fetchCanoniqueDistanceRowBefore(targetUtc),
+    fetchCanoniqueDistanceRowAfter(targetUtc),
+  ]);
+
+  const toPoint = (row: CanoniqueRow | null): CanoniqueDistancePoint | null => {
+    if (!row?.ts_utc) {
+      return null;
+    }
+    const asOf = parseSqlUtc(row.ts_utc);
+    if (!asOf) {
+      return null;
+    }
+    return {
+      asOf,
+      distKm: toNumber(row.m20_range_km),
+    };
+  };
+
+  return {
+    previous: toPoint(previousRow),
+    next: toPoint(nextRow),
   };
 }
 

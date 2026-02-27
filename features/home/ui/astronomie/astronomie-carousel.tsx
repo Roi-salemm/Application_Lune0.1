@@ -12,6 +12,7 @@ const CARD_GAP = 8;
 
 type AstronomieCarouselProps = AstronomieCard1Props & {
   distanceGeocentricLabel?: string;
+  isActive?: boolean;
 };
 
 export function AstronomieCarousel(props: AstronomieCarouselProps) {
@@ -34,7 +35,10 @@ export function AstronomieCarousel(props: AstronomieCarouselProps) {
           <AstronomieCard1 {...props} />
         </View>
         <View style={[styles.cardWrap, styles.lastCard, { width: cardWidth }]}>
-          <AstronomieCard2 distanceGeocentricLabel={props.distanceGeocentricLabel} />
+          <AstronomieCard2
+            distanceGeocentricLabel={props.distanceGeocentricLabel}
+            isActive={props.isActive}
+          />
         </View>
       </ScrollView>
     </View>

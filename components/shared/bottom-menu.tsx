@@ -1,10 +1,12 @@
 // Menu bas avec icones et etat actif.
 // Pourquoi : offrir une navigation rapide avec un rendu coherant par theme.
+// Info : le fond utilise un blur reel pour laisser voir le contenu dessous.
 import { Pressable, StyleSheet, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { ThemedView } from '@/components/shared/themed-view';
 import { withAlpha } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
 const MENU_ITEMS = [
@@ -21,18 +23,23 @@ type BottomMenuProps = {
 };
 
 export function BottomMenu({ onPressItem, activeIndex }: BottomMenuProps) {
-  const surface = useThemeColor({}, 'surface');
   const background = useThemeColor({}, 'background');
   const border = useThemeColor({}, 'border');
   const action = useThemeColor({}, 'btn-action');
   const nav = useThemeColor({}, 'btn-nav');
   const title = useThemeColor({}, 'title');
+  const surface = useThemeColor({}, 'surface');
+  const colorScheme = useColorScheme() ?? 'dark';
+  const blurTint = colorScheme === 'dark' ? 'dark' : 'light';
   const buttonBackground = withAlpha(background, 0.8);
   const buttonBorder = withAlpha(border, 0.6);
   const activeBorder = withAlpha(title, 0.18);
+  const overlayColor = withAlpha(surface, 0.35);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: surface }]}>
+    <View style={styles.container}>
+      <BlurView intensity={30} tint={blurTint} style={StyleSheet.absoluteFillObject} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: overlayColor }]} />
       <View style={styles.row}>
         {MENU_ITEMS.map((item, index) => {
           const isActive = activeIndex === index;
@@ -50,7 +57,7 @@ export function BottomMenu({ onPressItem, activeIndex }: BottomMenuProps) {
           );
         })}
       </View>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -63,6 +70,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingVertical: 12,
     paddingHorizontal: 16,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
